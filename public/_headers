@@ -1,0 +1,20 @@
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Model manifest JSON files must NEVER be cached — they change on every deploy.
+# Serving stale manifests causes face-api to request non-existent chunk files,
+# which returns a Cloudflare HTML error page that then leaks into the UI as raw text.
+/models/*.json
+  Cache-Control: no-store, no-cache, must-revalidate
+
+# Model binary weights can be cached long-term (they don't change between deploys).
+/models/*.bin
+  Cache-Control: public, max-age=31536000, immutable
+
+# Vendor scripts (face-api.min.js) — cache long-term
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Service worker must always be fetched fresh so the SW version check works.
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate
