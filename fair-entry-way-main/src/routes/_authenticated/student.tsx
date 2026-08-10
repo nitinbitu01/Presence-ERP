@@ -1093,7 +1093,7 @@ function StudentDashboard() {
       if (snapshot) {
         queryClient.setQueryData(
           ["my-leaves"],
-          snapshot.map((l) =>
+          snapshot.map((l: any) =>
             l.id === requestId ? { ...l, status: "cancelled" } : l,
           ),
         );
@@ -1529,7 +1529,7 @@ function StudentDashboard() {
                     />
                   ) : (
                     <div className="space-y-2" role="list">
-                      {leaves.map((l) => (
+                      {leaves.map((l: any) => (
                         <div
                           key={l.id}
                           role="listitem"
