@@ -400,39 +400,38 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
       status: "pending",
     };
 
-    const fullPayload = {
-      ...basePayload,
-      ...(data.assignedTeacherId ? { assigned_teacher_id: data.assignedTeacherId } : {}),
-    };
+    // Step 1: Insert standard basePayload (guaranteed to match DB schema without assigned_teacher_id)
+    let { data: inserted, error } = await (supabase as any)
+      .from("leave_requests")
+      .insert(basePayload)
+      .select("id")
+      .single();
 
-    // Attempt 1: Full payload via user RLS client
-    let { error } = await (supabase as any).from("leave_requests").insert(fullPayload);
-
-    // Attempt 2: If RLS error (not schema missing error), retry full payload with admin client
-    if (
-      error &&
-      !error.message?.includes("assigned_teacher_id") &&
-      !error.message?.includes("schema cache") &&
-      (error as any).code !== "PGRST204"
-    ) {
-      console.warn("[submitLeaveRequest] Primary RLS insert error, retrying admin:", error.message);
-      const adminRes = await (supabaseAdmin as any).from("leave_requests").insert(fullPayload);
+    if (error) {
+      console.warn("[submitLeaveRequest] Primary RLS insert error, retrying with supabaseAdmin:", error.message);
+      const adminRes = await (supabaseAdmin as any)
+        .from("leave_requests")
+        .insert(basePayload)
+        .select("id")
+        .single();
+      inserted = adminRes.data;
       error = adminRes.error;
     }
 
-    // Attempt 3: If assigned_teacher_id column is missing in DB schema, insert clean base payload
-    if (
-      error &&
-      (error.message?.includes("assigned_teacher_id") ||
-        error.message?.includes("schema cache") ||
-        (error as any).code === "PGRST204")
-    ) {
-      console.warn("[submitLeaveRequest] assigned_teacher_id column missing in DB, inserting base payload:", error.message);
-      const baseRes = await (supabaseAdmin as any).from("leave_requests").insert(basePayload);
-      error = baseRes.error;
+    if (error) throw new Error(error.message);
+
+    // Step 2: Best-effort update for assigned_teacher_id if column exists in DB schema
+    if (data.assignedTeacherId && inserted?.id) {
+      try {
+        await (supabaseAdmin as any)
+          .from("leave_requests")
+          .update({ assigned_teacher_id: data.assignedTeacherId })
+          .eq("id", inserted.id);
+      } catch (updateErr: any) {
+        console.warn("[submitLeaveRequest] Could not set assigned_teacher_id (column unmigrated):", updateErr?.message);
+      }
     }
 
-    if (error) throw new Error(error.message);
     return { ok: true };
   });
 
