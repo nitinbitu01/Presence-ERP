@@ -400,18 +400,10 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
       status: "pending",
     };
 
-    // Step 1: Insert standard basePayload without .select() projection
-    let { error } = await (supabase as any)
+    // Step 1: Direct insert via supabaseAdmin (guaranteed basePayload insert)
+    const { error } = await (supabaseAdmin as any)
       .from("leave_requests")
       .insert(basePayload);
-
-    if (error) {
-      console.warn("[submitLeaveRequest] Primary RLS insert error, retrying with supabaseAdmin:", error.message);
-      const adminRes = await (supabaseAdmin as any)
-        .from("leave_requests")
-        .insert(basePayload);
-      error = adminRes.error;
-    }
 
     if (error) throw new Error(error.message);
 
