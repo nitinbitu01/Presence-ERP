@@ -1230,8 +1230,7 @@ function StudentDashboard() {
         onOpenNotifications={() => setShowNotifModal(true)}
         onOpenSettings={() => navigate({ to: "/enroll" })}
         onOpenProfile={() => navigate({ to: "/enroll" })}
-      />
-
+      >
       <main
         id="main-content"
         className="mx-auto max-w-6xl px-6 py-8 space-y-5"
@@ -1887,6 +1886,7 @@ function StudentDashboard() {
           </>
         )}
       </main>
+      </ERPDayWiseTimesheet>
 
       <LeaveModal
         open={showLeaveModal}

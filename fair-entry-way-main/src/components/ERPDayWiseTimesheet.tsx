@@ -797,20 +797,21 @@ export function ERPDayWiseTimesheet({
   // RENDER
   // ───────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-[#070b14] flex flex-col md:flex-row text-foreground">
+    <div className="min-h-screen bg-slate-100 dark:bg-[#070b14] flex flex-col md:flex-row text-foreground relative">
 
       {/* ══════════════════════════════ SIDEBAR ══════════════════════════════ */}
       <aside
         role="navigation"
         aria-label="ERP navigation"
         className={cx(
-          "shrink-0 z-30",
+          "shrink-0 z-40",
           "w-full md:w-[68px] lg:w-[76px]",
+          "md:fixed md:top-0 md:bottom-0 md:left-0 md:h-screen md:min-h-screen",
           "bg-[#0b1120]",
           "border-b border-white/[0.06] md:border-b-0 md:border-r md:border-white/[0.06]",
-          "flex md:flex-col items-center",
+          "flex md:flex-col items-center justify-between",
           "py-2.5 md:py-5 px-2 md:px-0 gap-1 md:gap-0",
-          "overflow-x-auto md:overflow-visible",
+          "overflow-x-auto md:overflow-y-auto md:overflow-x-hidden",
           "shadow-2xl shadow-black/50"
         )}
       >
@@ -949,6 +950,9 @@ export function ERPDayWiseTimesheet({
           </button>
         </div>
       </aside>
+
+      {/* Spacer for fixed sidebar on desktop */}
+      <div className="hidden md:block shrink-0 md:w-[68px] lg:w-[76px]" aria-hidden="true" />
 
       {/* ════════════════════════════ MAIN CONTENT ═══════════════════════════ */}
       <main

@@ -72,7 +72,7 @@ describe("Phase B Server-Side Liveness Attestation Engine (AWS Rekognition / PAD
     it("evaluates liveness confidence < 85 as live failure", () => {
       const res = verifyLivenessSessionResult(62.0);
       expect(res.isLive).toBe(false);
-      expect(res.reason).toContain("below 85%");
+      expect(res.reason).toContain("below the 85% threshold");
     });
   });
 
@@ -100,7 +100,7 @@ describe("Phase B Server-Side Liveness Attestation Engine (AWS Rekognition / PAD
       ];
       const res = analyzeFacialDepthMap(flatLandmarks);
       expect(res.is3DFace).toBe(false);
-      expect(res.reason).toContain("Flat surface attack detected");
+      expect(res.reason).toContain("Low pseudo-depth variance");
     });
   });
 
