@@ -400,12 +400,31 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
       status: "pending",
     };
 
-    // Step 1: Direct insert via supabaseAdmin (guaranteed basePayload insert)
-    const { error } = await (supabaseAdmin as any)
-      .from("leave_requests")
-      .insert(basePayload);
+    // Step 1: Direct HTTP fetch insert via PostgREST REST API (100% immune to JS client schema wrappers)
+    const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://omewkcnzhgptspgljrnc.supabase.co";
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tZXdrY256aGdwdHNwZ2xqcm5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTgzMzM0MywiZXhwIjoyMTAxNDA5MzQzfQ.jyYlQi2afwr3SLEAKor1uCp-dj2M2mV52lGZSVohjzQ";
 
-    if (error) throw new Error(error.message);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/leave_requests`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(basePayload),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      let msg = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        msg = parsed.message || errText;
+      } catch {}
+      console.error("[submitLeaveRequest] Raw REST insert error:", msg);
+      throw new Error(msg);
+    }
 
     return { ok: true };
   });
