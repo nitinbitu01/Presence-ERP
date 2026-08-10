@@ -389,7 +389,7 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
     }
 
     const computedLeaveType = data.requestType === "od" ? "duty" : data.leaveType;
-    const payload = {
+    const basePayload: any = {
       student_id: userId,
       start_date: data.startDate,
       end_date: data.endDate,
@@ -398,23 +398,38 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
       leave_type: computedLeaveType,
       document_url: data.documentUrl || null,
       status: "pending",
-      assigned_teacher_id: data.assignedTeacherId || null,
     };
 
-    let { error } = await (supabase as any).from("leave_requests").insert(payload);
+    const fullPayload = {
+      ...basePayload,
+      ...(data.assignedTeacherId ? { assigned_teacher_id: data.assignedTeacherId } : {}),
+    };
 
-    if (error) {
-      console.warn("[submitLeaveRequest] Primary RLS insert error, retrying with supabaseAdmin:", error.message);
-      const adminRes = await (supabaseAdmin as any).from("leave_requests").insert(payload);
+    // Attempt 1: Full payload via user RLS client
+    let { error } = await (supabase as any).from("leave_requests").insert(fullPayload);
+
+    // Attempt 2: If RLS error (not schema missing error), retry full payload with admin client
+    if (
+      error &&
+      !error.message?.includes("assigned_teacher_id") &&
+      !error.message?.includes("schema cache") &&
+      (error as any).code !== "PGRST204"
+    ) {
+      console.warn("[submitLeaveRequest] Primary RLS insert error, retrying admin:", error.message);
+      const adminRes = await (supabaseAdmin as any).from("leave_requests").insert(fullPayload);
       error = adminRes.error;
     }
 
-    if (error && (error.message?.includes("assigned_teacher_id") || error.message?.includes("schema cache"))) {
-      console.warn("[submitLeaveRequest] assigned_teacher_id column missing in DB, retrying without assigned_teacher_id:", error.message);
-      const fallbackPayload = { ...payload };
-      delete (fallbackPayload as any).assigned_teacher_id;
-      const adminFallback = await (supabaseAdmin as any).from("leave_requests").insert(fallbackPayload);
-      error = adminFallback.error;
+    // Attempt 3: If assigned_teacher_id column is missing in DB schema, insert clean base payload
+    if (
+      error &&
+      (error.message?.includes("assigned_teacher_id") ||
+        error.message?.includes("schema cache") ||
+        (error as any).code === "PGRST204")
+    ) {
+      console.warn("[submitLeaveRequest] assigned_teacher_id column missing in DB, inserting base payload:", error.message);
+      const baseRes = await (supabaseAdmin as any).from("leave_requests").insert(basePayload);
+      error = baseRes.error;
     }
 
     if (error) throw new Error(error.message);
