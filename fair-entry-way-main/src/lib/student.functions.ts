@@ -400,33 +400,30 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
       status: "pending",
     };
 
-    // Step 1: Insert standard basePayload (guaranteed to match DB schema without assigned_teacher_id)
-    let { data: inserted, error } = await (supabase as any)
+    // Step 1: Insert standard basePayload without .select() projection
+    let { error } = await (supabase as any)
       .from("leave_requests")
-      .insert(basePayload)
-      .select("id")
-      .single();
+      .insert(basePayload);
 
     if (error) {
       console.warn("[submitLeaveRequest] Primary RLS insert error, retrying with supabaseAdmin:", error.message);
       const adminRes = await (supabaseAdmin as any)
         .from("leave_requests")
-        .insert(basePayload)
-        .select("id")
-        .single();
-      inserted = adminRes.data;
+        .insert(basePayload);
       error = adminRes.error;
     }
 
     if (error) throw new Error(error.message);
 
     // Step 2: Best-effort update for assigned_teacher_id if column exists in DB schema
-    if (data.assignedTeacherId && inserted?.id) {
+    if (data.assignedTeacherId) {
       try {
         await (supabaseAdmin as any)
           .from("leave_requests")
           .update({ assigned_teacher_id: data.assignedTeacherId })
-          .eq("id", inserted.id);
+          .eq("student_id", userId)
+          .eq("start_date", data.startDate)
+          .eq("end_date", data.endDate);
       } catch (updateErr: any) {
         console.warn("[submitLeaveRequest] Could not set assigned_teacher_id (column unmigrated):", updateErr?.message);
       }
