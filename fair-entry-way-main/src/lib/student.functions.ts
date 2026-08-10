@@ -417,15 +417,18 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
 
     // Step 2: Best-effort update for assigned_teacher_id if column exists in DB schema
     if (data.assignedTeacherId) {
-      try {
-        await (supabaseAdmin as any)
-          .from("leave_requests")
-          .update({ assigned_teacher_id: data.assignedTeacherId })
-          .eq("student_id", userId)
-          .eq("start_date", data.startDate)
-          .eq("end_date", data.endDate);
-      } catch (updateErr: any) {
-        console.warn("[submitLeaveRequest] Could not set assigned_teacher_id (column unmigrated):", updateErr?.message);
+      const { error: updateErr } = await (supabaseAdmin as any)
+        .from("leave_requests")
+        .update({ assigned_teacher_id: data.assignedTeacherId })
+        .eq("student_id", userId)
+        .eq("start_date", data.startDate)
+        .eq("end_date", data.endDate);
+
+      if (updateErr) {
+        console.warn(
+          "[submitLeaveRequest] Could not set assigned_teacher_id (column unmigrated in DB):",
+          updateErr.message,
+        );
       }
     }
 
