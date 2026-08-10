@@ -436,29 +436,18 @@ export const listMyLeaveRequests = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    let { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("leave_requests")
       .select(
-        "id, start_date, end_date, reason, rejection_reason, request_type, leave_type, status, created_at, assigned_teacher_id, profiles:assigned_teacher_id(display_name)",
+        "id, start_date, end_date, reason, rejection_reason, request_type, leave_type, status, created_at",
       )
       .eq("student_id", userId)
       .order("created_at", { ascending: false });
 
-    if (error && (error.message?.includes("assigned_teacher_id") || error.message?.includes("schema cache"))) {
-      console.warn("[listMyLeaveRequests] Fallback query without assigned_teacher_id due to missing DB column:", error.message);
-      const resFallback = await (supabase as any)
-        .from("leave_requests")
-        .select("id, start_date, end_date, reason, rejection_reason, request_type, leave_type, status, created_at")
-        .eq("student_id", userId)
-        .order("created_at", { ascending: false });
-      data = resFallback.data as any;
-      error = resFallback.error;
-    }
-
     if (error) throw new Error(error.message);
     return (data ?? []).map((r: any) => ({
       ...r,
-      assignedTeacherName: r.profiles?.display_name ?? null,
+      assignedTeacherName: null,
     }));
   });
 
@@ -466,23 +455,12 @@ export const listTeacherAssignedLeaveRequests = createServerFn({ method: "POST" 
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    let { data: rows, error } = await (supabaseAdmin as any)
+    const { data: rows, error } = await (supabaseAdmin as any)
       .from("leave_requests")
       .select(
-        "id, student_id, start_date, end_date, reason, request_type, leave_type, document_url, status, created_at, assigned_teacher_id, profiles:student_id(display_name, roll_no)",
+        "id, student_id, start_date, end_date, reason, request_type, leave_type, document_url, status, created_at, profiles:student_id(display_name, roll_no)",
       )
-      .eq("assigned_teacher_id", context.userId)
       .order("created_at", { ascending: false });
-
-    if (error && (error.message?.includes("assigned_teacher_id") || error.message?.includes("schema cache"))) {
-      console.warn("[listTeacherAssignedLeaveRequests] Fallback query due to missing DB column:", error.message);
-      const resFallback = await (supabaseAdmin as any)
-        .from("leave_requests")
-        .select("id, student_id, start_date, end_date, reason, request_type, leave_type, document_url, status, created_at, profiles:student_id(display_name, roll_no)")
-        .order("created_at", { ascending: false });
-      rows = resFallback.data;
-      error = resFallback.error;
-    }
 
     if (error) throw new Error(error.message);
     return (rows ?? []) as any[];
@@ -502,21 +480,11 @@ export const reviewTeacherAssignedLeaveRequest = createServerFn({ method: "POST"
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    let { data: req, error: getErr } = await (supabaseAdmin as any)
+    const { data: req, error: getErr } = await (supabaseAdmin as any)
       .from("leave_requests")
-      .select("id, student_id, start_date, end_date, request_type, leave_type, status, assigned_teacher_id")
+      .select("id, student_id, start_date, end_date, request_type, leave_type, status")
       .eq("id", data.requestId)
       .single();
-
-    if (getErr && (getErr.message?.includes("assigned_teacher_id") || getErr.message?.includes("schema cache"))) {
-      const fallbackGet = await (supabaseAdmin as any)
-        .from("leave_requests")
-        .select("id, student_id, start_date, end_date, request_type, leave_type, status")
-        .eq("id", data.requestId)
-        .single();
-      req = fallbackGet.data;
-      getErr = fallbackGet.error;
-    }
 
     if (getErr || !req) throw new Error("Leave request not found");
     if (req.status !== "pending") throw new Error("Leave request has already been reviewed");
