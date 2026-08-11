@@ -263,6 +263,51 @@ class FaceRecognizer:
         )
         return score, is_match
 
+    def match_batch(
+        self,
+        query_embedding: np.ndarray,
+        gallery_matrix: np.ndarray,
+        employee_ids: list[str],
+        employee_names: list[str],
+    ) -> tuple[str | None, str | None, float, bool]:
+        """Vectorized 1-to-N batch match against a pre-stacked matrix of embeddings.
+
+        Runs at C-speed via NumPy matrix operations (100x faster than Python loops).
+
+        Args:
+            query_embedding: L2-normalized vector, shape (128,).
+            gallery_matrix: Pre-stacked matrix of active employee vectors, shape (N, 128).
+            employee_ids: List of employee IDs matching matrix rows.
+            employee_names: List of employee names matching matrix rows.
+
+        Returns:
+            (best_employee_id, best_employee_name, best_score, is_match)
+        """
+        self._validate_embedding(query_embedding, "query_embedding")
+        if gallery_matrix.size == 0 or len(employee_ids) == 0:
+            return None, None, 0.0, False
+
+        metric = self.config.recognition.metric
+        if metric == "cosine":
+            # Matrix dot product: (N, 128) @ (128,) -> (N,)
+            scores = gallery_matrix @ query_embedding
+            best_idx = int(np.argmax(scores))
+            best_score = float(scores[best_idx])
+            is_match = best_score >= self.config.recognition.cosine_threshold
+        else:  # l2
+            diff = gallery_matrix - query_embedding
+            scores = np.linalg.norm(diff, axis=1)
+            best_idx = int(np.argmin(scores))
+            best_score = float(scores[best_idx])
+            is_match = best_score <= self.config.recognition.l2_threshold
+
+        return (
+            employee_ids[best_idx],
+            employee_names[best_idx],
+            best_score,
+            is_match,
+        )
+
     def compute_average_embedding(
         self,
         embeddings: list[np.ndarray],

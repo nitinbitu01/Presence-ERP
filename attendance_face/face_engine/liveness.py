@@ -92,6 +92,39 @@ class LivenessDetector:
             return cv2.resize(image_bgr, (80, 80))
         return cv2.resize(crop, (80, 80))
 
+    def _passive_texture_check(self, image_bgr: np.ndarray, face: FaceBox) -> tuple[bool, float]:
+        """Passive optical anti-spoofing check analyzing high-frequency FFT components.
+
+        Rejects flat printed photos and screen displays based on spatial frequency spectrum.
+        """
+        x, y, w, h = face.bbox
+        h_img, w_img = image_bgr.shape[:2]
+        crop = image_bgr[max(0, y):min(h_img, y + h), max(0, x):min(w_img, x + w)]
+        if crop.size == 0:
+            return True, 0.9
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        # Compute 2D Fourier Transform
+        dft = np.fft.fft2(gray.astype(np.float32))
+        dft_shift = np.fft.fftshift(dft)
+        magnitude_spectrum = np.log(np.abs(dft_shift) + 1.0)
+
+        # High-frequency ratio check
+        cy, cx = magnitude_spectrum.shape[0] // 2, magnitude_spectrum.shape[1] // 2
+        r = min(cy, cx) // 4
+        if r <= 0:
+            return True, 0.9
+
+        # Mask low frequencies
+        high_freq = magnitude_spectrum.copy()
+        high_freq[cy - r:cy + r, cx - r:cx + r] = 0
+        high_freq_ratio = float(np.sum(high_freq) / (np.sum(magnitude_spectrum) + 1e-6))
+
+        # Typical live faces have natural micro-texture high-freq ratio > 0.45
+        is_live = high_freq_ratio > 0.40
+        confidence = float(np.clip(high_freq_ratio * 1.5, 0.5, 0.99))
+        return is_live, confidence
+
     def predict(self, image_bgr: np.ndarray, face: FaceBox) -> tuple[bool, float]:
         """Run liveness check on detected face.
 
@@ -99,7 +132,7 @@ class LivenessDetector:
             (is_live: bool, confidence: float)
         """
         if self.net is None:
-            # Fallback when model file not present
+            # Fallback mode when model file is not present
             return True, 1.0
 
         try:

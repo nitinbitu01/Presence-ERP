@@ -317,6 +317,20 @@ class FaceDetector:
             )
             return None, detail
 
+        # ── Check 6: Illumination / Brightness ───────────────────────────
+        if face_crop.size > 0:
+            gray_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+            mean_brightness = float(np.mean(gray_crop))
+            if mean_brightness < 30.0 or mean_brightness > 225.0:
+                detail = {
+                    "reason": "poor_illumination",
+                    "measured_value": round(mean_brightness, 2),
+                    "threshold": "30-225",
+                    "description": f"Face lighting mean {mean_brightness:.1f} is poorly lit or overexposed.",
+                }
+                log.info("enrollment_rejected", employee_id=employee_id, **detail)
+                return None, detail
+
         return face, None
 
     # ─── Private helpers ─────────────────────────────────────────────────────

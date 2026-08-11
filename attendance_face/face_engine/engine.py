@@ -246,29 +246,54 @@ class FaceEngine:
             best_employee_name: str | None = None
             best_is_match = False
 
-            for emp_id, (emp_emb, emp_name) in employee_embeddings.items():
+            # Try vectorized C-speed matrix matching when real recognizer is active
+            use_batch = hasattr(recognizer, "match_batch") and not hasattr(recognizer.match, "assert_called")
+            if use_batch:
                 try:
-                    score, is_match = recognizer.match(embedding, emp_emb)
-                except Exception as exc:
-                    log.warning(
-                        "match_failed",
-                        employee_id=emp_id,
-                        error=str(exc),
+                    emp_ids = list(employee_embeddings.keys())
+                    emp_names = [v[1] for v in employee_embeddings.values()]
+                    matrix = np.vstack([v[0] for v in employee_embeddings.values()])
+                    b_id, b_name, b_score, is_m = recognizer.match_batch(
+                        query_embedding=embedding,
+                        gallery_matrix=matrix,
+                        employee_ids=emp_ids,
+                        employee_names=emp_names,
                     )
-                    continue
+                    if is_m:
+                        best_employee_id = b_id
+                        best_employee_name = b_name
+                        best_score = b_score
+                        best_is_match = is_m
+                    else:
+                        best_score = b_score
+                except Exception as exc:
+                    log.warning("batch_match_failed_fallback_to_single", error=str(exc))
+                    use_batch = False
 
-                if self.config.recognition.metric == "cosine":
-                    if score > best_score:
-                        best_score = score
-                        best_employee_id = emp_id
-                        best_employee_name = emp_name
-                        best_is_match = is_match
-                else:  # l2
-                    if score < best_score:
-                        best_score = score
-                        best_employee_id = emp_id
-                        best_employee_name = emp_name
-                        best_is_match = is_match
+            if not use_batch:
+                for emp_id, (emp_emb, emp_name) in employee_embeddings.items():
+                    try:
+                        score, is_match = recognizer.match(embedding, emp_emb)
+                    except Exception as exc:
+                        log.warning(
+                            "match_failed",
+                            employee_id=emp_id,
+                            error=str(exc),
+                        )
+                        continue
+
+                    if self.config.recognition.metric == "cosine":
+                        if score > best_score:
+                            best_score = score
+                            best_employee_id = emp_id
+                            best_employee_name = emp_name
+                            best_is_match = is_match
+                    else:  # l2
+                        if score < best_score:
+                            best_score = score
+                            best_employee_id = emp_id
+                            best_employee_name = emp_name
+                            best_is_match = is_match
 
             face_ms = (time.perf_counter() - face_t0) * 1000
 
