@@ -1066,10 +1066,18 @@ function AttendPage() {
 const HUMAN_REASON_EXPLANATION: Record<string, string> = {
   session_not_found:
     "Active class session not found. Please ask your instructor to start/broadcast the session or scan a valid session QR code.",
+  no_enrollment:
+    "You have not enrolled your face photo yet. Please click 'Enroll Face Photo' below to complete initial registration.",
+  identity_no_match:
+    "Face identity similarity did not match your enrolled photo. Please ensure good lighting and face the camera directly.",
   invalid_otp:
     "The 6-digit classroom OTP code does not match the instructor's active session OTP.",
+  otp_missing:
+    "The instructor requires a 6-digit classroom OTP code displayed on the board. Please enter it above.",
   outside_geofence:
     "Your location is outside the required classroom geofence boundary.",
+  late_cutoff_exceeded:
+    "The late check-in cutoff window for this class session has expired.",
   liveness_failed:
     "Face liveness verification failed. Please follow the movement challenge directly facing the camera.",
   no_face_detected:
@@ -1078,6 +1086,10 @@ const HUMAN_REASON_EXPLANATION: Record<string, string> = {
     "Bound hardware device attestation (WebAuthn) is required for check-in on this course.",
   excessive_clock_drift:
     "Your device clock has significant drift (> 5 min). Please set your device time to automatic.",
+  mock_location_detected:
+    "Mock location or GPS spoofing app detected. Please disable location spoofers and retry.",
+  gps_accuracy_too_coarse:
+    "GPS accuracy is too weak (> 500m). Please move outdoors or near a window for a clearer GPS fix.",
 };
 
 function ResultCard({ result, onRetry }: { result: CheckInResult; onRetry?: () => void }) {
@@ -1133,10 +1145,19 @@ function ResultCard({ result, onRetry }: { result: CheckInResult; onRetry?: () =
         )}
       </div>
 
+      {result.reasonCode === "no_enrollment" && (
+        <a
+          href="/enroll"
+          className="mt-5 w-full max-w-xs rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+        >
+          📸 Enroll Face Photo Now
+        </a>
+      )}
+
       {result.decision !== "present" && onRetry && (
         <button
           onClick={onRetry}
-          className="mt-5 w-full max-w-xs rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+          className="mt-3 w-full max-w-xs rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
         >
           🔄 Try Check-in Again
         </button>
