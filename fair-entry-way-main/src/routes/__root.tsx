@@ -169,7 +169,7 @@ function RootShell({ children }: { children: ReactNode }) {
 // The expected SW version — must match CACHE_VERSION in public/sw.js.
 // When the SW is updated, old clients with a stale SW are auto-evicted
 // without requiring the user to manually clear their browser cache.
-const EXPECTED_SW_VERSION = "presence-erp-v4-20260812";
+const EXPECTED_SW_VERSION = "presence-erp-v5-20260812";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();

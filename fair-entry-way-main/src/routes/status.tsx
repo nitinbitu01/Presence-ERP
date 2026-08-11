@@ -13,6 +13,14 @@ export const Route = createFileRoute("/status")({
 function SystemStatusPage() {
   const fetchStatus = useServerFn(getSystemStatus);
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      });
+    }
+  }, []);
+
   const { data } = useQuery({
     queryKey: ["public-system-status"],
     queryFn: () => fetchStatus(),
