@@ -863,33 +863,31 @@ function computeConfidenceScore(
   motion: MotionPresenceResult,
   maxAccuracyM: number,
 ): number {
-  let score = 0;
-
   const best = selectBestSample(samples);
   if (!best) return 0;
 
-  // GPS quality (0–40 points)
-  if (best.accuracyM <= 10) score += 40;
-  else if (best.accuracyM <= 30) score += 30;
-  else if (best.accuracyM <= 60) score += 20;
-  else if (best.accuracyM <= maxAccuracyM) score += 10;
+  // Continuous smooth GPS quality score (10–50 points based on exact meter precision)
+  const normAccuracy = Math.max(0, Math.min(100, best.accuracyM));
+  const gpsScore = 50.0 * (1.0 - normAccuracy / 120.0);
 
-  // Mock risk penalty
-  score -= Math.round(mockAnalysis.score * 0.4);
+  // Network context score (10–20 points)
+  let networkScore = 12.0;
+  if (network.isWifi) networkScore += 4.0;
+  if (network.isPrivateNetwork) networkScore += 4.0;
 
-  // Network signals (0–20 points)
-  if (network.isWifi) score += 10;
-  if (network.isPrivateNetwork) score += 10;
-
-  // Physical presence via motion (0–20 points)
-  if (motion.apiAvailable) score += 10;
-  if (motion.motionDetected) score += 10;
+  // Physical device motion sensor score (10–20 points)
+  let motionScore = 10.0;
+  if (motion.apiAvailable) motionScore += 5.0;
+  if (motion.motionDetected) motionScore += 5.0;
 
   // Multi-sample consistency bonus (0–10 points)
-  if (samples.length >= 3) score += 5;
-  if (samples.length >= 5) score += 5;
+  const sampleBonus = Math.min(10.0, samples.length * 2.5);
 
-  return Math.max(0, Math.min(100, score));
+  // Mock location risk penalty
+  const mockPenalty = Math.round(mockAnalysis.score * 0.4);
+
+  const rawScore = gpsScore + networkScore + motionScore + sampleBonus - mockPenalty;
+  return Math.max(15, Math.min(100, Math.round(rawScore)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

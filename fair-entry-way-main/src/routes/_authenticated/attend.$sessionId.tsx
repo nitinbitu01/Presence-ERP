@@ -1063,7 +1063,26 @@ function AttendPage() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+const HUMAN_REASON_EXPLANATION: Record<string, string> = {
+  session_not_found:
+    "Active class session not found. Please ask your instructor to start/broadcast the session or scan a valid session QR code.",
+  invalid_otp:
+    "The 6-digit classroom OTP code does not match the instructor's active session OTP.",
+  outside_geofence:
+    "Your location is outside the required classroom geofence boundary.",
+  liveness_failed:
+    "Face liveness verification failed. Please follow the movement challenge directly facing the camera.",
+  no_face_detected:
+    "No face detected. Please ensure good lighting and face the camera directly.",
+  webauthn_required:
+    "Bound hardware device attestation (WebAuthn) is required for check-in on this course.",
+  excessive_clock_drift:
+    "Your device clock has significant drift (> 5 min). Please set your device time to automatic.",
+};
+
 function ResultCard({ result, onRetry }: { result: CheckInResult; onRetry?: () => void }) {
+  const explanation = result.reasonCode ? HUMAN_REASON_EXPLANATION[result.reasonCode] : null;
+
   return (
     <div
       role="status"
@@ -1099,12 +1118,17 @@ function ResultCard({ result, onRetry }: { result: CheckInResult; onRetry?: () =
         </p>
         <p>
           <span className="font-semibold text-muted-foreground">Reason Code:</span>{" "}
-          <span className="font-medium">{result.reasonCode}</span>
+          <span className="font-mono font-medium">{result.reasonCode}</span>
         </p>
+        {explanation && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium pt-1 border-t border-border/40">
+            ℹ️ {explanation}
+          </p>
+        )}
         {result.similarity !== null && (
           <p>
             <span className="font-semibold text-muted-foreground">Identity Cosine Match:</span>{" "}
-            <span className="font-mono">{result.similarity.toFixed(4)}</span>
+            <span className="font-mono">{(result.similarity * 100).toFixed(1)}%</span>
           </p>
         )}
       </div>
