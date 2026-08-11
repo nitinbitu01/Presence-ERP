@@ -7,8 +7,9 @@
 import { Link } from "@tanstack/react-router";
 import { DevicePanel } from "./DevicePanel";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { EnrollState } from "./useEnrollment";
+import { BiometricFaceHUDOverlay } from "@/components/BiometricFaceHUDOverlay";
 
 const POLICY_VERSION = "2026-07-01";
 
@@ -42,6 +43,33 @@ export function EnrolledView({
 }: Props) {
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
   const [adminResetDialogOpen, setAdminResetDialogOpen] = useState(false);
+  const [showScannerTest, setShowScannerTest] = useState(false);
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const toggleScannerTest = async () => {
+    if (showScannerTest) {
+      if (scannerVideoRef.current?.srcObject) {
+        const stream = scannerVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((t) => t.stop());
+        scannerVideoRef.current.srcObject = null;
+      }
+      setShowScannerTest(false);
+    } else {
+      setShowScannerTest(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        });
+        setTimeout(() => {
+          if (scannerVideoRef.current) {
+            scannerVideoRef.current.srcObject = stream;
+          }
+        }, 100);
+      } catch (err) {
+        console.warn("[ScannerTest] Camera access failed:", err);
+      }
+    }
+  };
 
   const deptCode = depts.find((d) => d.id === state.profile?.department_id)?.code ?? "";
   const deptName = depts.find((d) => d.id === state.profile?.department_id)?.name ?? "";
@@ -187,13 +215,46 @@ export function EnrolledView({
           onRemove={onRemoveDevice}
         />
 
+        {/* Live Camera Scanner Test */}
+        {showScannerTest && (
+          <div className="border-t border-border p-4 bg-black/90">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-emerald-400 font-mono flex items-center gap-1">
+                <span>⚡</span> Live YuNet &amp; SFace Scanner HUD
+              </span>
+              <button
+                onClick={() => setShowScannerTest(false)}
+                className="text-[11px] text-muted-foreground hover:text-white px-2 py-0.5 rounded bg-muted/20"
+              >
+                Close Scanner ✕
+              </button>
+            </div>
+            <div className="relative overflow-hidden rounded-lg border border-emerald-500/30 bg-black aspect-[4/3] w-full max-w-sm mx-auto">
+              <video
+                ref={scannerVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="mx-auto block aspect-[4/3] w-full"
+              />
+              <BiometricFaceHUDOverlay videoRef={scannerVideoRef} active={true} />
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-wrap gap-3 border-t border-border px-6 py-4">
+          <button
+            onClick={toggleScannerTest}
+            className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+          >
+            📸 {showScannerTest ? "Hide Scanner Test" : "Test YuNet & SFace Scanner"}
+          </button>
           <button
             onClick={() => setWithdrawDialogOpen(true)}
             className="rounded-md border border-destructive/40 px-4 py-2 text-sm text-destructive hover:bg-destructive/10"
           >
-            🗑 Delete Biometric &amp; Re-enroll
+            🗑 Re-enroll Face Photo
           </button>
           <button
             onClick={onSignOut}

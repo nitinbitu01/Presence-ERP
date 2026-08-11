@@ -25,6 +25,7 @@ export function BiometricFaceHUDOverlay({
     if (!active) return;
     let animId: number;
     let isCancelled = false;
+    let scanLineY = 0;
 
     async function runDetectionLoop() {
       let faceapi: any = null;
@@ -32,10 +33,6 @@ export function BiometricFaceHUDOverlay({
         faceapi = await loadFaceApi();
       } catch (err) {
         console.warn("[BiometricHUD] face-api loading, retrying...", err);
-        if (!isCancelled) {
-          animId = window.setTimeout(runDetectionLoop, 300);
-        }
-        return;
       }
 
       const processFrame = async () => {
@@ -44,8 +41,8 @@ export function BiometricFaceHUDOverlay({
         const canvas = canvasRef.current;
 
         if (video && canvas) {
-          const vw = video.clientWidth || video.videoWidth || 320;
-          const vh = video.clientHeight || video.videoHeight || 240;
+          const vw = video.clientWidth || video.videoWidth || 400;
+          const vh = video.clientHeight || video.videoHeight || 300;
 
           if (canvas.width !== vw || canvas.height !== vh) {
             canvas.width = vw;
@@ -56,12 +53,36 @@ export function BiometricFaceHUDOverlay({
           if (ctx) {
             ctx.clearRect(0, 0, vw, vh);
 
-            if (video.readyState >= 2) {
+            // 1. Draw Scanning HUD Oval Target (Always Visible)
+            const cx = vw / 2;
+            const cy = vh / 2;
+            const rx = Math.min(vw, vh) * 0.32;
+            const ry = Math.min(vw, vh) * 0.42;
+
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = hudStats.faceDetected ? "#10b981" : "#6366f1"; // Emerald if face, Indigo scanning
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 2. Draw Moving Laser Scanline
+            scanLineY = (scanLineY + 3) % vh;
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, scanLineY);
+            ctx.lineTo(vw, scanLineY);
+            ctx.stroke();
+
+            // 3. Run YuNet / Face Detector if video is playing
+            if (faceapi && video.readyState >= 2) {
               try {
                 const detection: any = await faceapi
                   .detectSingleFace(
                     video,
-                    new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.25 }),
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.2 }),
                   )
                   .withFaceLandmarks(true);
 
@@ -70,7 +91,6 @@ export function BiometricFaceHUDOverlay({
                   const score = Math.round(detection.detection.score * 100);
                   const positions = (detection.landmarks?.positions ?? []) as FrameLandmark[];
 
-                  // Calculate video scale factor if displayed size != intrinsic size
                   const scaleX = vw / (video.videoWidth || vw);
                   const scaleY = vh / (video.videoHeight || vh);
 
@@ -81,62 +101,58 @@ export function BiometricFaceHUDOverlay({
 
                   const cornerLen = Math.min(w, h) * 0.22;
 
-                  // 1. Draw Emerald Bounding Box Shading
-                  ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
+                  // Bounding Box Shading
+                  ctx.fillStyle = "rgba(16, 185, 129, 0.15)";
                   ctx.fillRect(x, y, w, h);
 
-                  // 2. Draw Cyberpunk Corner Brackets
+                  // Cyberpunk Corners
                   ctx.lineWidth = 3;
-                  ctx.strokeStyle = "#10b981"; // Bright emerald
+                  ctx.strokeStyle = "#10b981";
 
-                  // Top-Left
                   ctx.beginPath();
                   ctx.moveTo(x, y + cornerLen);
                   ctx.lineTo(x, y);
                   ctx.lineTo(x + cornerLen, y);
                   ctx.stroke();
 
-                  // Top-Right
                   ctx.beginPath();
                   ctx.moveTo(x + w - cornerLen, y);
                   ctx.lineTo(x + w, y);
                   ctx.lineTo(x + w, y + cornerLen);
                   ctx.stroke();
 
-                  // Bottom-Left
                   ctx.beginPath();
                   ctx.moveTo(x, y + h - cornerLen);
                   ctx.lineTo(x, y + h);
                   ctx.lineTo(x + cornerLen, y + h);
                   ctx.stroke();
 
-                  // Bottom-Right
                   ctx.beginPath();
                   ctx.moveTo(x + w - cornerLen, y + h);
                   ctx.lineTo(x + w, y + h);
                   ctx.lineTo(x + w, y + h - cornerLen);
                   ctx.stroke();
 
-                  // 3. Draw 5 Facial Landmark Points (Eyes, Nose, Mouth)
+                  // 5 Facial Landmark Points (Cyan)
                   if (positions.length > 0) {
-                    ctx.fillStyle = "#38bdf8"; // Bright cyan
+                    ctx.fillStyle = "#38bdf8";
                     [36, 45, 30, 48, 54].forEach((idx) => {
                       const pt = positions[idx];
                       if (pt) {
                         ctx.beginPath();
-                        ctx.arc(pt.x * scaleX, pt.y * scaleY, 4, 0, Math.PI * 2);
+                        ctx.arc(pt.x * scaleX, pt.y * scaleY, 5, 0, Math.PI * 2);
                         ctx.fill();
                       }
                     });
                   }
 
-                  // 4. Draw Header Label Box above face
+                  // Label above Bounding Box
                   const labelText = `YuNet Face BBox: [${Math.round(x)}, ${Math.round(y)}] (${score}%)`;
                   ctx.font = "bold 11px monospace";
                   const textWidth = ctx.measureText(labelText).width;
                   const labelY = Math.max(20, y - 8);
 
-                  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+                  ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                   ctx.fillRect(x, labelY - 14, textWidth + 10, 18);
                   ctx.fillStyle = "#34d399";
                   ctx.fillText(labelText, x + 5, labelY - 2);
@@ -157,7 +173,7 @@ export function BiometricFaceHUDOverlay({
         }
 
         if (!isCancelled) {
-          animId = window.setTimeout(processFrame, 90);
+          animId = window.setTimeout(processFrame, 60);
         }
       };
 
@@ -174,23 +190,21 @@ export function BiometricFaceHUDOverlay({
 
   return (
     <>
-      {/* Absolute Canvas Overlay directly over video */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 z-20 pointer-events-none w-full h-full object-cover"
       />
-      {/* Real-time Status Banner at bottom of video container */}
-      <div className="absolute bottom-2 left-2 right-2 z-30 flex items-center justify-between rounded-md bg-slate-950/85 backdrop-blur px-3 py-1.5 text-[11px] text-white border border-emerald-500/40 shadow-xl">
+      <div className="absolute bottom-2 left-2 right-2 z-30 flex items-center justify-between rounded-md bg-slate-950/90 backdrop-blur px-3 py-1.5 text-[11px] text-white border border-emerald-500/40 shadow-2xl">
         <div className="flex items-center gap-2">
           <span
             className={`h-2.5 w-2.5 rounded-full ${
-              hudStats.faceDetected ? "bg-emerald-400 animate-ping" : "bg-amber-400"
+              hudStats.faceDetected ? "bg-emerald-400 animate-ping" : "bg-indigo-400 animate-pulse"
             }`}
           />
           <span className="font-mono font-bold text-emerald-400">
             {hudStats.faceDetected
               ? `YuNet: Face Tracked (${hudStats.confidence}%)`
-              : "YuNet: Align face in frame..."}
+              : "YuNet Detector: Scanning frame..."}
           </span>
         </div>
         <span className="font-mono text-indigo-300 font-bold">
