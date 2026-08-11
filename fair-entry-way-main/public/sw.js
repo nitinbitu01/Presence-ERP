@@ -12,7 +12,7 @@
 // error page instead of JSON, which then propagates as a raw-HTML error string
 // displayed to the user.
 
-const CACHE_VERSION = "presence-erp-v3-20260808";
+const CACHE_VERSION = "presence-erp-v4-20260812";
 const BIN_CACHE = `${CACHE_VERSION}-bins`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const KNOWN_CACHES = [BIN_CACHE, STATIC_CACHE];
