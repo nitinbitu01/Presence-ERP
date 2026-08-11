@@ -442,6 +442,11 @@ export const saveEnrollment = createServerFn({ method: "POST" })
       }
     }
 
+    // 5.5. Sync with Python YuNet & SFace Engine (if running)
+    if (data.photoDataUrl) {
+      await enrollWithPythonFaceEngine(data.photoDataUrl, userId);
+    }
+
     // 6. Save Device Fingerprint
     const deviceRes = await supabaseAdmin.from("device_fingerprints").upsert(
       {
@@ -2686,6 +2691,90 @@ export const respondToSpotCheck = createServerFn({ method: "POST" })
 
       return { verified: false, reason: "spot_check_failed" };
     }
+
+/**
+ * Forward enrollment image to Python FastAPI YuNet (Detector) + SFace (Recognizer) service.
+ * Endpoint: POST http://localhost:8000/employees/enroll
+ */
+async function enrollWithPythonFaceEngine(
+  photoDataUrl: string,
+  userId: string,
+): Promise<{ ok: boolean; message?: string } | null> {
+  const engineUrl = process.env.PYTHON_BIOMETRIC_ENGINE_URL || "http://localhost:8000";
+  try {
+    const base64Data = photoDataUrl.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+    const blob = new Blob([buffer], { type: "image/jpeg" });
+    const formData = new FormData();
+    formData.append("images", blob, "enrollment.jpg");
+    formData.append("employee_id", userId);
+    formData.append("name", userId);
+    formData.append("department", "University");
+
+    const resp = await fetch(`${engineUrl}/employees/enroll`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (resp.ok) {
+      console.log(`[PythonFaceEngine] Student ${userId} registered in Python YuNet+SFace DB`);
+      return { ok: true };
+    } else {
+      const errText = await resp.text();
+      console.warn(`[PythonFaceEngine] Enrollment HTTP ${resp.status}: ${errText}`);
+      return { ok: false, message: errText };
+    }
+  } catch (err) {
+    console.warn(`[PythonFaceEngine] Cannot connect to ${engineUrl}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Forward check-in image to Python FastAPI YuNet (Detector) + SFace (Recognizer) service.
+ * Endpoint: POST http://localhost:8000/recognize
+ */
+export async function verifyWithPythonFaceEngine(
+  photoDataUrl: string,
+  userId: string,
+): Promise<{
+  ok: boolean;
+  facesDetected: number;
+  matchedUserId?: string;
+  confidence?: number;
+  isMatch?: boolean;
+} | null> {
+  const engineUrl = process.env.PYTHON_BIOMETRIC_ENGINE_URL || "http://localhost:8000";
+  try {
+    const base64Data = photoDataUrl.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+    const blob = new Blob([buffer], { type: "image/jpeg" });
+    const formData = new FormData();
+    formData.append("file", blob, "checkin_frame.jpg");
+
+    const resp = await fetch(`${engineUrl}/recognize?camera_id=web_app&record_attendance=false`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!resp.ok) return null;
+    const resData: any = await resp.json();
+    const faces = resData.faces || [];
+    if (faces.length === 0) return { ok: true, facesDetected: 0 };
+
+    const topFace = faces[0];
+    return {
+      ok: true,
+      facesDetected: faces.length,
+      matchedUserId: topFace.matched_employee_id,
+      confidence: topFace.confidence || topFace.score || 0.95,
+      isMatch: topFace.matched_employee_id === userId,
+    };
+  } catch (err) {
+    console.warn(`[PythonFaceEngine] Cannot connect to ${engineUrl}:`, err);
+    return null;
+  }
+}
 
     await supabaseAdmin.from("spot_check_requests").update({ status: "passed" }).eq("id", req.id);
 
