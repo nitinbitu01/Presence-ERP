@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "sdk_version": "0.23.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://kdqcfhhaffsbhnmvrjmt.supabase.co/auth/v1",
+    "accepted_audiences": ["authenticated"]
+  },
+  "mcp": {
+    "server": {
+      "name": "presence-mcp",
+      "version": "0.1.0",
+      "title": "Presence Attendance"
+    },
+    "tools": [
+      {
+        "name": "whoami",
+        "title": "Who am I",
+        "description": "Return the signed-in user's Presence profile and roles.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_my_courses",
+        "title": "List my courses",
+        "description": "List courses relevant to the signed-in user: courses they teach and courses they are enrolled in.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_course_sessions",
+        "title": "List class sessions for a course",
+        "description": "Return scheduled class sessions for a course the signed-in user teaches or is enrolled in. RLS applies.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "course_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUID of the course."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Maximum sessions to return (default 50)."
+            }
+          },
+          "required": ["course_id", "limit"]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_my_attendance",
+        "title": "List my attendance",
+        "description": "Return the signed-in student's recent attendance ledger entries, newest first.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Maximum number of rows to return (default 50)."
+            }
+          },
+          "required": ["limit"]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
