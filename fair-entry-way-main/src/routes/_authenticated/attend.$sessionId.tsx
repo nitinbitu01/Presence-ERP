@@ -841,7 +841,7 @@ function AttendPage() {
           aria-label="Camera preview for face liveness check"
           className="mx-auto block aspect-[4/3] w-full max-w-md"
         />
-        <BiometricFaceHUDOverlay videoRef={videoRef} active={modelState.status === "ready"} />
+        <BiometricFaceHUDOverlay videoRef={videoRef} active={true} />
         {/* Loading overlay */}
         {modelState.status === "loading" && !busy && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center">

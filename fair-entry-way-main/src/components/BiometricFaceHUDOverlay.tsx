@@ -4,27 +4,21 @@ import { loadFaceApi, FrameLandmark } from "@/lib/face-api-loader";
 interface BiometricFaceHUDOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   active?: boolean;
-  className?: string;
 }
 
 export function BiometricFaceHUDOverlay({
   videoRef,
   active = true,
-  className = "",
 }: BiometricFaceHUDOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hudStats, setHudStats] = useState<{
     faceDetected: boolean;
     confidence: number;
     bbox: { x: number; y: number; width: number; height: number } | null;
-    yaw: number;
-    sharpness: number;
   }>({
     faceDetected: false,
     confidence: 0,
     bbox: null,
-    yaw: 0,
-    sharpness: 0,
   });
 
   useEffect(() => {
@@ -32,22 +26,26 @@ export function BiometricFaceHUDOverlay({
     let animId: number;
     let isCancelled = false;
 
-    async function startHudLoop() {
+    async function runDetectionLoop() {
       let faceapi: any = null;
       try {
         faceapi = await loadFaceApi();
-      } catch {
+      } catch (err) {
+        console.warn("[BiometricHUD] face-api loading, retrying...", err);
+        if (!isCancelled) {
+          animId = window.setTimeout(runDetectionLoop, 300);
+        }
         return;
       }
 
-      const detectFrame = async () => {
+      const processFrame = async () => {
         if (isCancelled) return;
         const video = videoRef.current;
         const canvas = canvasRef.current;
 
-        if (video && canvas && video.readyState >= 2 && video.videoWidth > 0) {
-          const vw = video.videoWidth;
-          const vh = video.videoHeight;
+        if (video && canvas) {
+          const vw = video.clientWidth || video.videoWidth || 320;
+          const vh = video.clientHeight || video.videoHeight || 240;
 
           if (canvas.width !== vw || canvas.height !== vh) {
             canvas.width = vw;
@@ -58,106 +56,115 @@ export function BiometricFaceHUDOverlay({
           if (ctx) {
             ctx.clearRect(0, 0, vw, vh);
 
-            try {
-              const detection: any = await faceapi
-                .detectSingleFace(
-                  video,
-                  new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.3 }),
-                )
-                .withFaceLandmarks(true);
+            if (video.readyState >= 2) {
+              try {
+                const detection: any = await faceapi
+                  .detectSingleFace(
+                    video,
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.25 }),
+                  )
+                  .withFaceLandmarks(true);
 
-              if (detection?.detection?.box) {
-                const box = detection.detection.box;
-                const score = Math.round(detection.detection.score * 100);
-                const positions = (detection.landmarks?.positions ?? []) as FrameLandmark[];
+                if (detection?.detection?.box) {
+                  const box = detection.detection.box;
+                  const score = Math.round(detection.detection.score * 100);
+                  const positions = (detection.landmarks?.positions ?? []) as FrameLandmark[];
 
-                // Draw Cyberpunk HUD Bounding Box
-                const { x, y, width: w, height: h } = box;
-                const cornerLen = Math.min(w, h) * 0.2;
+                  // Calculate video scale factor if displayed size != intrinsic size
+                  const scaleX = vw / (video.videoWidth || vw);
+                  const scaleY = vh / (video.videoHeight || vh);
 
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = "#10b981"; // Emerald green
-                ctx.fillStyle = "rgba(16, 185, 129, 0.08)";
-                ctx.fillRect(x, y, w, h);
+                  const x = box.x * scaleX;
+                  const y = box.y * scaleY;
+                  const w = box.width * scaleX;
+                  const h = box.height * scaleY;
 
-                // Top-Left Corner
-                ctx.beginPath();
-                ctx.moveTo(x, y + cornerLen);
-                ctx.lineTo(x, y);
-                ctx.lineTo(x + cornerLen, y);
-                ctx.stroke();
+                  const cornerLen = Math.min(w, h) * 0.22;
 
-                // Top-Right Corner
-                ctx.beginPath();
-                ctx.moveTo(x + w - cornerLen, y);
-                ctx.lineTo(x + w, y);
-                ctx.lineTo(x + w, y + cornerLen);
-                ctx.stroke();
+                  // 1. Draw Emerald Bounding Box Shading
+                  ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
+                  ctx.fillRect(x, y, w, h);
 
-                // Bottom-Left Corner
-                ctx.beginPath();
-                ctx.moveTo(x, y + h - cornerLen);
-                ctx.lineTo(x, y + h);
-                ctx.lineTo(x + cornerLen, y + h);
-                ctx.stroke();
+                  // 2. Draw Cyberpunk Corner Brackets
+                  ctx.lineWidth = 3;
+                  ctx.strokeStyle = "#10b981"; // Bright emerald
 
-                // Bottom-Right Corner
-                ctx.beginPath();
-                ctx.moveTo(x + w - cornerLen, y + h);
-                ctx.lineTo(x + w, y + h);
-                ctx.lineTo(x + w, y + h - cornerLen);
-                ctx.stroke();
+                  // Top-Left
+                  ctx.beginPath();
+                  ctx.moveTo(x, y + cornerLen);
+                  ctx.lineTo(x, y);
+                  ctx.lineTo(x + cornerLen, y);
+                  ctx.stroke();
 
-                // Draw Landmark Points (Eyes, Nose, Mouth)
-                if (positions.length > 0) {
-                  ctx.fillStyle = "#38bdf8"; // Cyan
-                  // Eye landmarks (left: ~36-41, right: ~42-47)
-                  [36, 45, 30, 48, 54].forEach((idx) => {
-                    const pt = positions[idx];
-                    if (pt) {
-                      ctx.beginPath();
-                      ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-                      ctx.fill();
-                    }
+                  // Top-Right
+                  ctx.beginPath();
+                  ctx.moveTo(x + w - cornerLen, y);
+                  ctx.lineTo(x + w, y);
+                  ctx.lineTo(x + w, y + cornerLen);
+                  ctx.stroke();
+
+                  // Bottom-Left
+                  ctx.beginPath();
+                  ctx.moveTo(x, y + h - cornerLen);
+                  ctx.lineTo(x, y + h);
+                  ctx.lineTo(x + cornerLen, y + h);
+                  ctx.stroke();
+
+                  // Bottom-Right
+                  ctx.beginPath();
+                  ctx.moveTo(x + w - cornerLen, y + h);
+                  ctx.lineTo(x + w, y + h);
+                  ctx.lineTo(x + w, y + h - cornerLen);
+                  ctx.stroke();
+
+                  // 3. Draw 5 Facial Landmark Points (Eyes, Nose, Mouth)
+                  if (positions.length > 0) {
+                    ctx.fillStyle = "#38bdf8"; // Bright cyan
+                    [36, 45, 30, 48, 54].forEach((idx) => {
+                      const pt = positions[idx];
+                      if (pt) {
+                        ctx.beginPath();
+                        ctx.arc(pt.x * scaleX, pt.y * scaleY, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                      }
+                    });
+                  }
+
+                  // 4. Draw Header Label Box above face
+                  const labelText = `YuNet Face BBox: [${Math.round(x)}, ${Math.round(y)}] (${score}%)`;
+                  ctx.font = "bold 11px monospace";
+                  const textWidth = ctx.measureText(labelText).width;
+                  const labelY = Math.max(20, y - 8);
+
+                  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+                  ctx.fillRect(x, labelY - 14, textWidth + 10, 18);
+                  ctx.fillStyle = "#34d399";
+                  ctx.fillText(labelText, x + 5, labelY - 2);
+
+                  setHudStats({
+                    faceDetected: true,
+                    confidence: score,
+                    bbox: { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) },
                   });
+                } else {
+                  setHudStats({ faceDetected: false, confidence: 0, bbox: null });
                 }
-
-                // Draw Text Label above Bounding Box
-                ctx.fillStyle = "#10b981";
-                ctx.font = "bold 12px monospace";
-                ctx.fillText(`YuNet BBox: [${Math.round(x)}, ${Math.round(y)}] ${score}%`, x, Math.max(16, y - 8));
-
-                setHudStats({
-                  faceDetected: true,
-                  confidence: score,
-                  bbox: { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) },
-                  yaw: 0,
-                  sharpness: 145,
-                });
-              } else {
-                setHudStats({
-                  faceDetected: false,
-                  confidence: 0,
-                  bbox: null,
-                  yaw: 0,
-                  sharpness: 0,
-                });
+              } catch {
+                setHudStats({ faceDetected: false, confidence: 0, bbox: null });
               }
-            } catch {
-              // Ignore single frame detection error
             }
           }
         }
 
         if (!isCancelled) {
-          animId = window.setTimeout(detectFrame, 100);
+          animId = window.setTimeout(processFrame, 90);
         }
       };
 
-      detectFrame();
+      processFrame();
     }
 
-    startHudLoop();
+    runDetectionLoop();
 
     return () => {
       isCancelled = true;
@@ -166,29 +173,30 @@ export function BiometricFaceHUDOverlay({
   }, [videoRef, active]);
 
   return (
-    <div className={`relative w-full ${className}`}>
+    <>
+      {/* Absolute Canvas Overlay directly over video */}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 z-10 pointer-events-none w-full h-full object-cover"
+        className="absolute inset-0 z-20 pointer-events-none w-full h-full object-cover"
       />
-      {/* Live HUD Information Overlay Bar */}
-      <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between rounded-md bg-black/80 backdrop-blur px-3 py-1.5 text-[11px] text-white border border-emerald-500/30">
+      {/* Real-time Status Banner at bottom of video container */}
+      <div className="absolute bottom-2 left-2 right-2 z-30 flex items-center justify-between rounded-md bg-slate-950/85 backdrop-blur px-3 py-1.5 text-[11px] text-white border border-emerald-500/40 shadow-xl">
         <div className="flex items-center gap-2">
           <span
-            className={`h-2 w-2 rounded-full ${
+            className={`h-2.5 w-2.5 rounded-full ${
               hudStats.faceDetected ? "bg-emerald-400 animate-ping" : "bg-amber-400"
             }`}
           />
           <span className="font-mono font-bold text-emerald-400">
             {hudStats.faceDetected
               ? `YuNet: Face Tracked (${hudStats.confidence}%)`
-              : "YuNet: Searching Face..."}
+              : "YuNet: Align face in frame..."}
           </span>
         </div>
         <span className="font-mono text-indigo-300 font-bold">
-          SFace 128D: {hudStats.faceDetected ? "Vector Ready" : "Standby"}
+          SFace 128D: {hudStats.faceDetected ? "NORMALIZED" : "STANDBY"}
         </span>
       </div>
-    </div>
+    </>
   );
 }
