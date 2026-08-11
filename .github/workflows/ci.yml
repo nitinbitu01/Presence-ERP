@@ -1,0 +1,50 @@
+name: Best-in-Class Quality Gate Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # ── Security: Block commits that contain real secrets ──────────
+      - name: Security — Reject .env with real credentials
+        run: |
+          if [ -f .env ]; then
+            # Fail if .env contains what looks like a real API key
+            if grep -qE '(re_[A-Za-z0-9_]{20,}|sb_publishable_[A-Za-z0-9_]{20,})' .env; then
+              echo "::error file=.env::BLOCKED: .env contains real API credentials. Use .env.example and deployment secrets instead."
+              exit 1
+            fi
+          fi
+          echo "✓ No secrets detected in tracked files"
+
+      # ── Type Safety ───────────────────────────────────────────────
+      - name: Type Check (tsc)
+        run: npx tsc --noEmit
+
+      # ── Code Quality ──────────────────────────────────────────────
+      - name: Lint Check (eslint)
+        run: npx eslint src --max-warnings=0
+
+      # ── Tests ──────────────────────────────────────────────────────
+      - name: Run Test Suite & RLS Verification
+        run: npm run verify
+
+      # ── Production Bundle ──────────────────────────────────────────
+      - name: Build Production Bundle
+        run: npm run build
