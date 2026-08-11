@@ -1,0 +1,1 @@
+import{n as e,t}from"./createServerFn-BQaHKMrV.js";import{t as n}from"./auth-middleware-JDjVgB0Q.js";var r=t({method:`POST`}).middleware([n]).handler(e(`42f76730d15fcabd1782d0c6a92092f55309168cde8725526d35890d4fad752d`));export{r as saveFeedback};

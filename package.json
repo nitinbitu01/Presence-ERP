@@ -1,0 +1,7 @@
+{
+  "name": "presence-erp-root",
+  "private": true,
+  "scripts": {
+    "build": "cd fair-entry-way-main && npm run build"
+  }
+}
