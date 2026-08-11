@@ -59,6 +59,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEnrollment, AuthError, type Profile } from "@/components/enroll/useEnrollment";
 import { EnrolledView } from "@/components/enroll/EnrolledView";
 import { ProfileForm, type Dept, type Prog } from "@/components/enroll/ProfileForm";
+import { BiometricFaceHUDOverlay } from "@/components/BiometricFaceHUDOverlay";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -912,6 +913,7 @@ function EnrollPage() {
             aria-label="Camera preview for face enrollment"
             className="mx-auto block aspect-[4/3] w-full max-w-md"
           />
+          <BiometricFaceHUDOverlay videoRef={videoRef} active={true} />
         </div>
       )}
 
