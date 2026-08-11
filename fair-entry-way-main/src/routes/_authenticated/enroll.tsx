@@ -859,10 +859,16 @@ function EnrollPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-semibold text-foreground">Enroll your face</h1>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+          ⚡ OpenCV YuNet (Face Detector)
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          🧠 SFace (128D Neural Recognizer)
+        </span>
+      </div>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your camera image is processed <strong>only in this browser</strong>. We never store raw
-        images or video. What leaves your device is a 128-dimension numeric descriptor, encrypted
-        with AES-GCM on the server.
+        Your camera image is processed using <strong>OpenCV YuNet face detection & SFace neural alignment</strong>. We never store raw images or video. What leaves your device is a 128-dimension SFace descriptor, encrypted with AES-GCM-256 on the server.
       </p>
 
       {!state.isAdminOrTeacher && (

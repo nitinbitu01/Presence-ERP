@@ -117,16 +117,16 @@ def _verify(model: dict, models_dir: Path, *, allow_empty_sha: bool = False) -> 
     expected = model["sha256"].strip().lower()
     if not expected:
         if allow_empty_sha:
-            print(f"  ⚠  No expected SHA256 for {model['filename']} — skipping hash check.")
+            print(f"  [WARN] No expected SHA256 for {model['filename']} - skipping hash check.")
             print("     Run --print-checksums after download and update config.yaml.")
             return True
-        print(f"  ✗  sha256 is empty for {model['filename']} — update config.yaml.")
+        print(f"  [FAIL] sha256 is empty for {model['filename']} - update config.yaml.")
         return False
 
     actual = _sha256_of_file(path)
     if actual == expected:
         return True
-    print(f"  ✗  Checksum MISMATCH for {model['filename']}")
+    print(f"  [FAIL] Checksum MISMATCH for {model['filename']}")
     print(f"     Expected: {expected}")
     print(f"     Actual:   {actual}")
     return False
@@ -151,7 +151,7 @@ def cmd_print_checksums(models_dir: Path) -> int:
     if not all_ok:
         print("Some models are missing. Run without --print-checksums to download.")
         return 1
-    print("Copy these SHA256 values into config.yaml → models.detector.sha256 / recognizer.sha256")
+    print("Copy these SHA256 values into config.yaml -> models.detector.sha256 / recognizer.sha256")
     return 0
 
 
@@ -163,13 +163,12 @@ def cmd_verify_only(models_dir: Path) -> int:
         path = models_dir / model["filename"]
         print(f"Checking: {model['filename']}")
         if not path.exists():
-            print(f"  ✗  MISSING — run without --verify-only to download.")
+            print(f"  [FAIL] MISSING - run without --verify-only to download.")
             all_ok = False
             continue
         ok = _verify(model, models_dir, allow_empty_sha=True)
         if ok:
-            size_mb = path.stat().st_size / 1_048_576
-            print(f"  ✓  OK ({size_mb:.1f} MB)")
+            print("  [OK] Verified OK")
         else:
             all_ok = False
     print()
@@ -183,27 +182,26 @@ def cmd_download_and_verify(models_dir: Path) -> int:
 
     online = _has_internet()
     if not online:
-        print("⚠  No internet connection detected — running in offline mode.\n")
+        print("No internet connection detected - running in offline mode.\n")
 
     all_ok = True
     for model in MODELS:
-        print(f"─── {model['name']} ({model['filename']}) ───")
+        print(f"--- {model['name']} ({model['filename']}) ---")
         path = models_dir / model["filename"]
 
         # Check if file already exists and passes checksum
         if path.exists():
             ok = _verify(model, models_dir, allow_empty_sha=True)
             if ok:
-                size_mb = path.stat().st_size / 1_048_576
-                print(f"  ✓  Already present and verified ({size_mb:.1f} MB) — skipping.\n")
+                print(f"  [OK] File exists and verified OK. Skipping download.\n")
                 continue
             # Checksum failed — delete and re-download
-            print(f"  ⚠  Checksum failed — deleting corrupted file.")
+            print(f"  [WARN] Checksum failed - deleting corrupted file.")
             path.unlink()
 
         # Offline: cannot download
         if not online:
-            print(f"  ✗  File missing and no internet — manual download required.")
+            print(f"  [FAIL] File missing and no internet - manual download required.")
             print(f"     URL: {model['url']}")
             print(f"     Save to: {path.resolve()}")
             print()
@@ -214,17 +212,16 @@ def cmd_download_and_verify(models_dir: Path) -> int:
         try:
             _download(model["url"], path)
         except RuntimeError as exc:
-            print(f"  ✗  {exc}\n")
+            print(f"  [FAIL] {exc}\n")
             all_ok = False
             continue
 
         # Post-download verification
         ok = _verify(model, models_dir, allow_empty_sha=True)
         if ok:
-            size_mb = path.stat().st_size / 1_048_576
-            print(f"  ✓  Downloaded and verified ({size_mb:.1f} MB)\n")
+            print(f"  [OK] Downloaded and verified successfully.\n")
         else:
-            print(f"  ✗  Post-download verification FAILED — file may be corrupt.\n")
+            print(f"  [FAIL] Post-download verification FAILED - file may be corrupt.\n")
             all_ok = False
 
     # Summary
