@@ -1,25 +1,13 @@
 // src/routes/_authenticated/student.tsx — FINAL WORLD-CLASS VERSION
 // ─────────────────────────────────────────────────────────────────────────────
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  memo,
-  useId,
-  lazy,
-  Suspense,
-} from "react";
+import { getMyRoles } from "@/lib/admin.functions";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useMemo, memo, useId, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getOrCreateActiveDemoSession } from "@/lib/attendance.functions";
-import { ERPDayWiseTimesheet } from "@/components/ERPDayWiseTimesheet";
+
 import {
   getStudentDashboard,
   submitLeaveRequest,
@@ -46,10 +34,7 @@ import { LiveSessionTicker } from "@/components/student/LiveSessionTicker";
 import { VirtualList } from "@/components/student/VirtualList";
 import { StaleIndicator } from "@/components/student/StaleIndicator";
 import { PrintAttendanceReport } from "@/components/student/PrintAttendanceReport";
-import {
-  DashboardSkeleton,
-  CardSkeleton,
-} from "@/components/student/Skeleton";
+import { DashboardSkeleton, CardSkeleton } from "@/components/student/Skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +77,19 @@ const FeesCard = lazy(() =>
 // Route
 // ─────────────────────────────────────────────────────────────────────────────
 export const Route = createFileRoute("/_authenticated/student")({
+  beforeLoad: async () => {
+    try {
+      const roles = await getMyRoles();
+      if (!roles.isStudent) {
+        throw redirect({ to: "/auth" });
+      }
+    } catch (e) {
+      if (e && typeof e === "object" && "isRedirect" in e) {
+        throw e;
+      }
+      throw redirect({ to: "/auth" });
+    }
+  },
   component: StudentDashboard,
 });
 
@@ -186,32 +184,20 @@ function StatusBadge({ status }: { status: AttendanceStatus }) {
     warning: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
     shortage: "bg-red-500/15 text-red-700 dark:text-red-400",
   } as const;
-  return (
-    <Badge className={map[status]}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
+  return <Badge className={map[status]}>{status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
 }
 
 function DecisionBadge({ decision }: { decision: string }) {
   if (decision === "present" || decision === "fallback_present")
     return (
-      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
-        Present
-      </Badge>
+      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">Present</Badge>
     );
   if (decision === "review")
     return (
-      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400">
-        Under review
-      </Badge>
+      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400">Under review</Badge>
     );
   if (decision === "rejected")
-    return (
-      <Badge className="bg-red-500/15 text-red-700 dark:text-red-400">
-        Rejected
-      </Badge>
-    );
+    return <Badge className="bg-red-500/15 text-red-700 dark:text-red-400">Rejected</Badge>;
   return <Badge variant="secondary">{decision}</Badge>;
 }
 
@@ -340,9 +326,7 @@ function KeyboardShortcutsHint() {
             ["F", "Face attendance"],
           ].map(([key, desc]) => (
             <div key={key} className="flex items-center justify-between">
-              <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                {key}
-              </kbd>
+              <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">{key}</kbd>
               <span className="text-muted-foreground">{desc}</span>
             </div>
           ))}
@@ -378,21 +362,10 @@ function ConfirmDialog({
       <div className="space-y-5">
         <p className="text-sm text-muted-foreground">{description}</p>
         <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-            disabled={busy}
-          >
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button
-            variant={variant}
-            size="sm"
-            onClick={onConfirm}
-            disabled={busy}
-            aria-busy={busy}
-          >
+          <Button variant={variant} size="sm" onClick={onConfirm} disabled={busy} aria-busy={busy}>
             {busy ? (
               <span className="flex items-center gap-1.5">
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -425,8 +398,7 @@ function LeaveModal({
   const formId = useId();
 
   const patch = useCallback(
-    (updates: Partial<LeaveFormState>) =>
-      setForm((prev) => ({ ...prev, ...updates })),
+    (updates: Partial<LeaveFormState>) => setForm((prev) => ({ ...prev, ...updates })),
     [],
   );
 
@@ -437,7 +409,9 @@ function LeaveModal({
     if (open) {
       setForm(EMPTY_LEAVE_FORM);
       setError(null);
-      fetchTeachers().then((list) => setTeachers(list)).catch(() => {});
+      fetchTeachers()
+        .then((list) => setTeachers(list))
+        .catch(() => {});
     }
   }, [open, fetchTeachers]);
 
@@ -445,12 +419,10 @@ function LeaveModal({
     if (!form.assignedTeacherId) return "Please select a teacher to review your request.";
     if (!form.startDate) return "Start date is required.";
     if (!form.endDate) return "End date is required.";
-    if (form.endDate < form.startDate)
-      return "End date cannot be before start date.";
+    if (form.endDate < form.startDate) return "End date cannot be before start date.";
     if (form.startDate < todayIso()) return "Start date cannot be in the past.";
     const trimmed = form.reason.trim();
-    if (trimmed.length < 10)
-      return "Please provide a reason of at least 10 characters.";
+    if (trimmed.length < 10) return "Please provide a reason of at least 10 characters.";
     if (trimmed.length > 500) return "Reason must be 500 characters or fewer.";
     if (form.docUrl && !form.docUrl.startsWith("https://"))
       return "Document URL must start with https://";
@@ -501,21 +473,10 @@ function LeaveModal({
   const charCount = form.reason.trim().length;
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Apply for Leave / On-Duty (OD)"
-    >
-      <form
-        id={formId}
-        onSubmit={handleSubmit}
-        noValidate
-        className="space-y-4"
-      >
+    <Modal open={open} onClose={onClose} title="Apply for Leave / On-Duty (OD)">
+      <form id={formId} onSubmit={handleSubmit} noValidate className="space-y-4">
         <fieldset>
-          <legend className="mb-2 text-xs font-medium text-foreground">
-            Request type
-          </legend>
+          <legend className="mb-2 text-xs font-medium text-foreground">Request type</legend>
           <div className="grid grid-cols-2 gap-2">
             {(["leave", "od"] as const).map((t) => (
               <button
@@ -608,10 +569,7 @@ function LeaveModal({
 
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <label
-              htmlFor={`${formId}-reason`}
-              className="text-xs font-medium text-foreground"
-            >
+            <label htmlFor={`${formId}-reason`} className="text-xs font-medium text-foreground">
               Reason{" "}
               <span className="text-destructive" aria-hidden="true">
                 *
@@ -638,10 +596,7 @@ function LeaveModal({
         </div>
 
         <div className="space-y-1">
-          <label
-            htmlFor={`${formId}-doc`}
-            className="block text-xs font-medium text-foreground"
-          >
+          <label htmlFor={`${formId}-doc`} className="block text-xs font-medium text-foreground">
             Supporting document{" "}
             <span className="font-normal text-muted-foreground">(optional)</span>
           </label>
@@ -658,13 +613,7 @@ function LeaveModal({
         {error && <ErrorBanner message={error} />}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            disabled={busy}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={busy} aria-busy={busy}>
@@ -703,18 +652,10 @@ const NotificationsModal = memo(function NotificationsModal({
   onRead: (id: string) => Promise<void>;
 }) {
   const ITEM_HEIGHT = 88;
-  const CONTAINER_HEIGHT = Math.min(
-    notifications.length * ITEM_HEIGHT,
-    400,
-  );
+  const CONTAINER_HEIGHT = Math.min(notifications.length * ITEM_HEIGHT, 400);
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Notifications"
-      maxWidth="max-w-md"
-    >
+    <Modal open={open} onClose={onClose} title="Notifications" maxWidth="max-w-md">
       {notifications.length === 0 ? (
         <EmptyState icon={Bell} message="No notifications yet." />
       ) : (
@@ -742,13 +683,9 @@ const NotificationsModal = memo(function NotificationsModal({
                   <span className="font-semibold text-xs text-foreground line-clamp-1">
                     {n.title}
                   </span>
-                  {!n.read && (
-                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                  )}
+                  {!n.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />}
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-                  {n.message}
-                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{n.message}</p>
                 <time
                   className="mt-1 block text-[10px] text-muted-foreground"
                   dateTime={n.created_at}
@@ -771,7 +708,14 @@ function TrajectoryModal({
 }: {
   open: boolean;
   onClose: () => void;
-  course: { courseId: string; code: string; name: string; percentage: number; attended: number; totalHeld: number } | null;
+  course: {
+    courseId: string;
+    code: string;
+    name: string;
+    percentage: number;
+    attended: number;
+    totalHeld: number;
+  } | null;
 }) {
   const calcTrajectory = useStableServerFn(useServerFn(calculateAttendanceGoalTrajectory));
   const [targetPct, setTargetPct] = useState(75);
@@ -796,7 +740,8 @@ function TrajectoryModal({
         <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
           <p className="text-xs font-semibold text-foreground">{course.name}</p>
           <p className="text-xs text-muted-foreground">
-            Current: <strong className="text-foreground">{course.percentage.toFixed(1)}%</strong> ({course.attended}/{course.totalHeld} classes attended)
+            Current: <strong className="text-foreground">{course.percentage.toFixed(1)}%</strong> (
+            {course.attended}/{course.totalHeld} classes attended)
           </p>
         </div>
 
@@ -838,17 +783,20 @@ function TrajectoryModal({
               <>
                 <p className="text-sm font-bold">🎉 Target Already Achieved!</p>
                 <p className="text-xs">
-                  Your current attendance ({result.currentAttendancePct}%) meets or exceeds your target of {targetPct}%.
+                  Your current attendance ({result.currentAttendancePct}%) meets or exceeds your
+                  target of {targetPct}%.
                 </p>
               </>
             ) : (
               <>
                 <p className="text-sm font-bold">🎯 Trajectory Goal Requirement</p>
                 <p className="text-2xl font-black tabular-nums my-1">
-                  Attend next {result.classesNeeded} consecutive class{result.classesNeeded === 1 ? "" : "es"}
+                  Attend next {result.classesNeeded} consecutive class
+                  {result.classesNeeded === 1 ? "" : "es"}
                 </p>
                 <p className="text-xs">
-                  To raise your attendance from {result.currentAttendancePct}% to your target of {targetPct}%.
+                  To raise your attendance from {result.currentAttendancePct}% to your target of{" "}
+                  {targetPct}%.
                 </p>
               </>
             )}
@@ -893,7 +841,11 @@ function DataSubjectRightsCard({ userId }: { userId: string }) {
   };
 
   const handleRequestDeletion = async () => {
-    if (!confirm("Are you sure you want to request complete account deletion under DPDP Act 2023 Section 12?")) {
+    if (
+      !confirm(
+        "Are you sure you want to request complete account deletion under DPDP Act 2023 Section 12?",
+      )
+    ) {
       return;
     }
     setBusy(true);
@@ -902,7 +854,9 @@ function DataSubjectRightsCard({ userId }: { userId: string }) {
       const res = await deleteReqFn({
         data: { userId, reason: "Student right-to-erasure request" },
       });
-      setMsg(`🎉 Deletion ticket ${res.ticketId} created. DPDP Officer will process within statutory period.`);
+      setMsg(
+        `🎉 Deletion ticket ${res.ticketId} created. DPDP Officer will process within statutory period.`,
+      );
     } catch (e) {
       setMsg(`Error: ${(e as Error).message}`);
     } finally {
@@ -951,11 +905,17 @@ function DataSubjectRightsCard({ userId }: { userId: string }) {
       <div className="rounded-lg bg-muted/40 p-3 text-[11px] text-muted-foreground flex items-start gap-2">
         <span className="text-base">⚖️</span>
         <div>
-          <strong className="text-foreground">Designated Grievance Redressal Officer:</strong> Nitin Kumar
+          <strong className="text-foreground">Designated Grievance Redressal Officer:</strong> Nitin
+          Kumar
           <br />
-          Email: <span className="font-mono text-indigo-500">grievance.officer@university.edu</span> | Phone: +91 79 6812 6800
+          Email: <span className="font-mono text-indigo-500">
+            grievance.officer@university.edu
+          </span>{" "}
+          | Phone: +91 79 6812 6800
           <br />
-          <span className="text-[10px] opacity-80">Statutory 30-day resolution deadline enforced for all data privacy complaints.</span>
+          <span className="text-[10px] opacity-80">
+            Statutory 30-day resolution deadline enforced for all data privacy complaints.
+          </span>
         </div>
       </div>
     </Card>
@@ -1022,15 +982,21 @@ function StudentDashboard() {
   useEffect(() => {
     const channel = supabase
       .channel("student-dashboard-rt")
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "class_sessions",
-      }, () => {
-        queryClient.invalidateQueries({ queryKey: ["student-dashboard"] });
-      })
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "class_sessions",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["student-dashboard"] });
+        },
+      )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [queryClient]);
 
   const { data: leaves, refetch: refetchLeaves } = useQuery({
@@ -1085,24 +1051,20 @@ function StudentDashboard() {
   }, [isOnline, refetchLeaves, showToast, sendLeave]);
 
   const cancelMutation = useMutation({
-    mutationFn: (requestId: string) =>
-      cancelLeave({ data: { requestId } }),
+    mutationFn: (requestId: string) => cancelLeave({ data: { requestId } }),
     onMutate: async (requestId) => {
       await queryClient.cancelQueries({ queryKey: ["my-leaves"] });
       const snapshot = queryClient.getQueryData<typeof leaves>(["my-leaves"]);
       if (snapshot) {
         queryClient.setQueryData(
           ["my-leaves"],
-          snapshot.map((l: any) =>
-            l.id === requestId ? { ...l, status: "cancelled" } : l,
-          ),
+          snapshot.map((l: any) => (l.id === requestId ? { ...l, status: "cancelled" } : l)),
         );
       }
       return { snapshot };
     },
     onError: (_err, _id, ctx) => {
-      if (ctx?.snapshot)
-        queryClient.setQueryData(["my-leaves"], ctx.snapshot);
+      if (ctx?.snapshot) queryClient.setQueryData(["my-leaves"], ctx.snapshot);
       showToast("Could not cancel the request. Please try again.", "error");
     },
     onSuccess: () => showToast("Leave request cancelled.", "success"),
@@ -1116,10 +1078,8 @@ function StudentDashboard() {
     async (id: string) => {
       try {
         await readNotif({ data: { id } });
-        queryClient.setQueryData(
-          ["my-notifications"],
-          (old: typeof notifications) =>
-            (old ?? []).map((n) => (n.id === id ? { ...n, read: true } : n)),
+        queryClient.setQueryData(["my-notifications"], (old: typeof notifications) =>
+          (old ?? []).map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
       } catch {
         showToast("Could not mark notification as read.", "error");
@@ -1209,28 +1169,10 @@ function StudentDashboard() {
     };
   }, [data?.recent, recentPage]);
 
-  const studentTabItems = useMemo(
-    () => [
-      { id: "attendance", label: "My Attendance Log" },
-      { id: "leaves", label: "Leave & OD Quotas" },
-      { id: "exams", label: "Exams & Results" },
-      { id: "fees", label: "Fee Invoices" },
-      { id: "ask", label: "Ask Presence 🤖" },
-      { id: "help", label: "Help & FAQ" },
-    ],
-    [],
-  );
-
   return (
     <div className="space-y-6">
       <StudentOnboardingWizard />
-      <ERPDayWiseTimesheet
-        adminTabs={studentTabItems}
-        headerTitle="⚡ Student Quick Navigation"
-        onOpenNotifications={() => setShowNotifModal(true)}
-        onOpenSettings={() => navigate({ to: "/enroll" })}
-        onOpenProfile={() => navigate({ to: "/enroll" })}
-      >
+
       <main
         id="main-content"
         className="mx-auto max-w-6xl px-6 py-8 space-y-5"
@@ -1254,15 +1196,12 @@ function StudentDashboard() {
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight">
-                My Attendance
-              </h1>
+              <h1 className="text-2xl font-bold tracking-tight">My Attendance</h1>
               <NetworkQualityIndicator />
               {data && <StaleIndicator dataVersion={data} />}
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Minimum {(data as any)?.statutoryThreshold ?? 75}% required for exam
-              eligibility.
+              Minimum {(data as any)?.statutoryThreshold ?? 75}% required for exam eligibility.
             </p>
           </div>
 
@@ -1289,9 +1228,7 @@ function StudentDashboard() {
               size="sm"
               onClick={() => setShowNotifModal(true)}
               aria-label={
-                unreadCount > 0
-                  ? `Notifications — ${unreadCount} unread`
-                  : "Notifications"
+                unreadCount > 0 ? `Notifications — ${unreadCount} unread` : "Notifications"
               }
               className="relative"
             >
@@ -1313,19 +1250,11 @@ function StudentDashboard() {
               onClick={handleDemoStart}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
             >
-              {demoStarting ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                "📸"
-              )}
+              {demoStarting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : "📸"}
               {demoStarting ? "Opening…" : "Face Attendance"}
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowLeaveModal(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setShowLeaveModal(true)}>
               <Calendar className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Apply Leave / OD
             </Button>
@@ -1385,21 +1314,15 @@ function StudentDashboard() {
                     >
                       {data.overall.percentage.toFixed(1)}%
                     </div>
-                    <p
-                      id="overall-desc"
-                      className="mt-1 text-sm text-muted-foreground"
-                    >
-                      {data.overall.attended} of {data.overall.totalHeld}{" "}
-                      classes attended
+                    <p id="overall-desc" className="mt-1 text-sm text-muted-foreground">
+                      {data.overall.attended} of {data.overall.totalHeld} classes attended
                     </p>
                   </div>
                   <div className="w-full sm:w-1/2">
                     <Progress
                       value={Math.min(100, data.overall.percentage)}
                       className="h-3"
-                      indicatorClassName={statusIndicatorClass(
-                        data.overall.status,
-                      )}
+                      indicatorClassName={statusIndicatorClass(data.overall.status)}
                       aria-label="Overall attendance progress"
                       aria-describedby="overall-desc"
                       aria-valuenow={Math.round(data.overall.percentage)}
@@ -1428,8 +1351,8 @@ function StudentDashboard() {
                       : `${shortageCourses.length} courses`}
                   </p>
                   <p className="mt-0.5 text-muted-foreground">
-                    {shortageCourses.map((c) => c.code).join(", ")} — attend
-                    upcoming classes to restore eligibility.
+                    {shortageCourses.map((c) => c.code).join(", ")} — attend upcoming classes to
+                    restore eligibility.
                   </p>
                 </div>
               </div>
@@ -1464,9 +1387,7 @@ function StudentDashboard() {
                       const remaining = Math.max(0, b.allocated - b.used);
                       const pct = Math.min(
                         100,
-                        Math.round(
-                          (b.used / Math.max(b.allocated, 1)) * 100,
-                        ),
+                        Math.round((b.used / Math.max(b.allocated, 1)) * 100),
                       );
                       const isLow = remaining <= 2;
                       return (
@@ -1474,9 +1395,7 @@ function StudentDashboard() {
                           key={b.id}
                           className={[
                             "rounded-lg border p-3 space-y-1.5 transition-colors",
-                            isLow
-                              ? "border-amber-500/40 bg-amber-500/5"
-                              : "border-border",
+                            isLow ? "border-amber-500/40 bg-amber-500/5" : "border-border",
                           ].join(" ")}
                           aria-label={`${b.leave_type}: ${remaining} days remaining`}
                         >
@@ -1508,9 +1427,7 @@ function StudentDashboard() {
             {leaves !== undefined && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-medium">
-                    My Leave & OD Requests
-                  </CardTitle>
+                  <CardTitle className="text-base font-medium">My Leave & OD Requests</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {leaves.length === 0 ? (
@@ -1518,11 +1435,7 @@ function StudentDashboard() {
                       icon={Calendar}
                       message="No leave or OD requests yet."
                       action={
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setShowLeaveModal(true)}
-                        >
+                        <Button size="sm" variant="outline" onClick={() => setShowLeaveModal(true)}>
                           Apply for Leave
                         </Button>
                       }
@@ -1551,7 +1464,7 @@ function StudentDashboard() {
                             <div className="text-xs text-muted-foreground">
                               {fmtDate(l.start_date)} → {fmtDate(l.end_date)}
                             </div>
-                             {l.assignedTeacherName && (
+                            {l.assignedTeacherName && (
                               <div className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
                                 Assigned Teacher: {l.assignedTeacherName}
                               </div>
@@ -1570,8 +1483,7 @@ function StudentDashboard() {
                               variant={
                                 l.status === "approved"
                                   ? "default"
-                                  : l.status === "rejected" ||
-                                      l.status === "cancelled"
+                                  : l.status === "rejected" || l.status === "cancelled"
                                     ? "destructive"
                                     : "secondary"
                               }
@@ -1600,21 +1512,15 @@ function StudentDashboard() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-medium">
-                  Upcoming Classes
-                </CardTitle>
+                <CardTitle className="text-base font-medium">Upcoming Classes</CardTitle>
               </CardHeader>
               <CardContent>
                 {data.upcoming.length === 0 ? (
-                  <EmptyState
-                    icon={Calendar}
-                    message="No classes in the next 14 days."
-                  />
+                  <EmptyState icon={Calendar} message="No classes in the next 14 days." />
                 ) : (
                   <div className="space-y-2" role="list">
                     {data.upcoming.map((u) => {
-                      const tooEarly =
-                        new Date(u.startsAt).getTime() > Date.now() + 5 * 60_000;
+                      const tooEarly = new Date(u.startsAt).getTime() > Date.now() + 5 * 60_000;
                       return (
                         <div
                           key={u.sessionId}
@@ -1627,9 +1533,7 @@ function StudentDashboard() {
                             </div>
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Clock className="h-3 w-3" aria-hidden="true" />
-                              <time dateTime={u.startsAt}>
-                                {fmtDateTime(u.startsAt)}
-                              </time>
+                              <time dateTime={u.startsAt}>{fmtDateTime(u.startsAt)}</time>
                             </div>
                           </div>
                           <div>
@@ -1639,10 +1543,7 @@ function StudentDashboard() {
                                 Marked
                               </Badge>
                             ) : (
-                              <Link
-                                to="/attend/$sessionId"
-                                params={{ sessionId: u.sessionId }}
-                              >
+                              <Link to="/attend/$sessionId" params={{ sessionId: u.sessionId }}>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1668,9 +1569,7 @@ function StudentDashboard() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-medium">
-                  Subject-wise Attendance
-                </CardTitle>
+                <CardTitle className="text-base font-medium">Subject-wise Attendance</CardTitle>
               </CardHeader>
               <CardContent>
                 {data.courses.length === 0 ? (
@@ -1683,19 +1582,14 @@ function StudentDashboard() {
                     {data.courses.map((c) => {
                       const thresholdPct = (data as any).statutoryThreshold ?? 75;
                       return (
-                        <div
-                          key={c.courseId}
-                          className="rounded-lg border border-border p-4"
-                        >
+                        <div key={c.courseId} className="rounded-lg border border-border p-4">
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <div className="font-semibold text-sm">
                                 {c.code} · {c.name}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {c.teacherName
-                                  ? `Faculty: ${c.teacherName}`
-                                  : "Faculty: —"}
+                                {c.teacherName ? `Faculty: ${c.teacherName}` : "Faculty: —"}
                                 {c.semesterCode ? ` · ${c.semesterCode}` : ""}
                               </div>
                             </div>
@@ -1725,24 +1619,16 @@ function StudentDashboard() {
                               <StatusBadge status={c.status} />
                               {c.status === "safe" && c.totalHeld > 0 && (
                                 <span className="text-muted-foreground">
-                                  Can miss{" "}
-                                  <strong className="text-foreground">
-                                    {c.bunkable}
-                                  </strong>{" "}
-                                  more class{c.bunkable === 1 ? "" : "es"} and
-                                  stay above {thresholdPct}%.
+                                  Can miss <strong className="text-foreground">{c.bunkable}</strong>{" "}
+                                  more class{c.bunkable === 1 ? "" : "es"} and stay above{" "}
+                                  {thresholdPct}%.
                                 </span>
                               )}
                               {c.status !== "safe" && c.totalHeld > 0 && (
                                 <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
-                                  <TrendingDown
-                                    className="h-3 w-3"
-                                    aria-hidden="true"
-                                  />
-                                  Attend next{" "}
-                                  <strong>{c.needToAttend}</strong> class
-                                  {c.needToAttend === 1 ? "" : "es"} to reach{" "}
-                                  {thresholdPct}%.
+                                  <TrendingDown className="h-3 w-3" aria-hidden="true" />
+                                  Attend next <strong>{c.needToAttend}</strong> class
+                                  {c.needToAttend === 1 ? "" : "es"} to reach {thresholdPct}%.
                                 </span>
                               )}
                             </div>
@@ -1793,10 +1679,7 @@ function StudentDashboard() {
               </CardHeader>
               <CardContent>
                 {paginatedRecent.items.length === 0 ? (
-                  <EmptyState
-                    icon={CheckCircle2}
-                    message="No check-ins recorded yet."
-                  />
+                  <EmptyState icon={CheckCircle2} message="No check-ins recorded yet." />
                 ) : (
                   <>
                     <Table>
@@ -1813,13 +1696,9 @@ function StudentDashboard() {
                         {paginatedRecent.items.map((r) => (
                           <TableRow key={r.id}>
                             <TableCell className="text-xs">
-                              <time dateTime={r.createdAt}>
-                                {fmtDateTime(r.createdAt)}
-                              </time>
+                              <time dateTime={r.createdAt}>{fmtDateTime(r.createdAt)}</time>
                             </TableCell>
-                            <TableCell className="text-xs">
-                              {r.courseCode ?? "—"}
-                            </TableCell>
+                            <TableCell className="text-xs">{r.courseCode ?? "—"}</TableCell>
                             <TableCell>
                               <DecisionBadge decision={r.decision} />
                             </TableCell>
@@ -1827,9 +1706,7 @@ function StudentDashboard() {
                               {r.reasonCode ?? "—"}
                             </TableCell>
                             <TableCell className="text-right text-xs tabular-nums">
-                              {r.similarity !== null
-                                ? r.similarity.toFixed(3)
-                                : "—"}
+                              {r.similarity !== null ? r.similarity.toFixed(3) : "—"}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1845,31 +1722,22 @@ function StudentDashboard() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            setRecentPage((p) => Math.max(0, p - 1))
-                          }
+                          onClick={() => setRecentPage((p) => Math.max(0, p - 1))}
                           disabled={recentPage === 0}
                           aria-label="Previous page"
                         >
                           ← Previous
                         </Button>
-                        <span
-                          className="text-xs text-muted-foreground"
-                          aria-current="page"
-                        >
+                        <span className="text-xs text-muted-foreground" aria-current="page">
                           Page {recentPage + 1} of {paginatedRecent.totalPages}
                         </span>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            setRecentPage((p) =>
-                              Math.min(paginatedRecent.totalPages - 1, p + 1),
-                            )
+                            setRecentPage((p) => Math.min(paginatedRecent.totalPages - 1, p + 1))
                           }
-                          disabled={
-                            recentPage >= paginatedRecent.totalPages - 1
-                          }
+                          disabled={recentPage >= paginatedRecent.totalPages - 1}
                           aria-label="Next page"
                         >
                           Next →
@@ -1886,7 +1754,6 @@ function StudentDashboard() {
           </>
         )}
       </main>
-      </ERPDayWiseTimesheet>
 
       <LeaveModal
         open={showLeaveModal}

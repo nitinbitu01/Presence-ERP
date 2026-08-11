@@ -5,7 +5,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOptionalSecret } from "./cf-env.server";
 
 function getBootstrapAdminEmail(): string {
-  return (getOptionalSecret("BOOTSTRAP_ADMIN_EMAIL") ?? "nitinbitu03@gmail.com").toLowerCase().trim();
+  return (getOptionalSecret("BOOTSTRAP_ADMIN_EMAIL") ?? "nitinbitu03@gmail.com")
+    .toLowerCase()
+    .trim();
 }
 
 function isBootstrapAdmin(email: string | undefined | null): boolean {
@@ -20,8 +22,13 @@ let cachedActorTokenExpiresAt = 0;
 
 export async function getActorAuthenticatedClient() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "https://omewkcnzhgptspgljrnc.supabase.co";
-  const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tZXdrY256aGdwdHNwZ2xqcm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4MzMzNDMsImV4cCI6MjEwMTQwOTM0M30.NzzJkU-_IwV-iEE-yKmYWAaIra6W1CwS--ordaqVnGY";
+  const supabaseUrl =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    "https://omewkcnzhgptspgljrnc.supabase.co";
+  const publishableKey =
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tZXdrY256aGdwdHNwZ2xqcm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4MzMzNDMsImV4cCI6MjEwMTQwOTM0M30.NzzJkU-_IwV-iEE-yKmYWAaIra6W1CwS--ordaqVnGY";
 
   if (!cachedActorToken || Date.now() > cachedActorTokenExpiresAt) {
     try {
@@ -54,10 +61,7 @@ export async function getActorAuthenticatedClient() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getValidAuthUserId(
-  client: any,
-  userId?: string | null,
-): Promise<string> {
+export async function getValidAuthUserId(client: any, userId?: string | null): Promise<string> {
   if (!userId) return SYSTEM_ACTOR_ID;
   try {
     const { data } = await client
@@ -100,7 +104,10 @@ export async function writeAuditLog(
       details,
     });
     if (error) {
-      console.warn("[audit_log] Primary audit log write error, retrying with SYSTEM_ACTOR_ID:", error.message);
+      console.warn(
+        "[audit_log] Primary audit log write error, retrying with SYSTEM_ACTOR_ID:",
+        error.message,
+      );
       await client.from("audit_logs").insert({
         actor_id: SYSTEM_ACTOR_ID,
         action: opts.action,
@@ -163,16 +170,11 @@ export const claimBootstrapAdmin = createServerFn({ method: "POST" })
     const { checkRateLimit } = await import("./rate-limiter");
     const { PresenceErpError } = await import("@/lib/errors");
 
-    const rateLimit = await checkRateLimit(
-      supabaseAdmin,
-      context.userId,
-      "claim_bootstrap_admin",
-      {
-        maxAttempts: 5,
-        windowMs: 3600 * 1000,
-        blockDurationMs: 3600 * 1000,
-      },
-    );
+    const rateLimit = await checkRateLimit(supabaseAdmin, context.userId, "claim_bootstrap_admin", {
+      maxAttempts: 5,
+      windowMs: 3600 * 1000,
+      blockDurationMs: 3600 * 1000,
+    });
 
     if (!rateLimit.allowed) {
       throw new PresenceErpError(
@@ -235,10 +237,12 @@ export const assignSignupRole = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // 1. Assign role in user_roles
-    const { error: roleErr } = await supabaseAdmin.from("user_roles").upsert(
-      { user_id: context.userId, role: data.role },
-      { onConflict: "user_id,role", ignoreDuplicates: true },
-    );
+    const { error: roleErr } = await supabaseAdmin
+      .from("user_roles")
+      .upsert(
+        { user_id: context.userId, role: data.role },
+        { onConflict: "user_id,role", ignoreDuplicates: true },
+      );
     if (roleErr) throw new Error(roleErr.message);
 
     // 2. Resolve department ID if department name matches
@@ -274,6 +278,16 @@ export const assignSignupRole = createServerFn({ method: "POST" })
     );
 
     // 4. Handle Selected Subjects (Both Teacher & Student)
+    //
+    // ACCOUNT-ISOLATION FIX (15-day hardening):
+    //   - `courses.teacher_id` is NO LONGER the sole authority for "which
+    //     subjects does this teacher teach". The canonical source is the
+    //     `teacher_courses` join table.
+    //   - We NEVER run `UPDATE courses SET teacher_id = <new>` on a course
+    //     owned by another teacher. That "steal" behavior caused Teacher B to
+    //     take over Teacher A's subject and Teacher A to lose it.
+    //   - We use `limit(1)` + dedupe instead of `maybeSingle()` so legacy
+    //     duplicate codes never cause unbounded row multiplication.
     if (data.subjects && data.subjects.length > 0) {
       for (const subjStr of data.subjects) {
         if (!subjStr.trim()) continue;
@@ -283,33 +297,72 @@ export const assignSignupRole = createServerFn({ method: "POST" })
         const name = parts.length > 1 ? parts.slice(1).join(" ") : subjStr;
 
         let courseId: string | null = null;
-        const { data: existingCourse } = await supabaseAdmin
+
+        // Find the canonical course row for this code (dedupe: take the first).
+        const { data: existingCourses } = await supabaseAdmin
           .from("courses")
-          .select("id")
+          .select("id, teacher_id")
           .eq("code", code)
-          .maybeSingle();
+          .order("created_at", { ascending: true })
+          .limit(1);
+
+        const existingCourse = existingCourses?.[0] ?? null;
 
         if (existingCourse) {
           courseId = existingCourse.id;
+
           if (data.role === "teacher") {
-            await supabaseAdmin
-              .from("courses")
-              .update({ teacher_id: context.userId, department_id: departmentId })
-              .eq("id", existingCourse.id);
+            // NEVER steal a course from another teacher. Only record the
+            // assignment in the canonical join table (added by the
+            // 20260811010000_teacher_course_isolation migration; generated
+            // Supabase types lag behind until regenerated, so cast here).
+            await (supabaseAdmin as any).from("teacher_courses").upsert(
+              {
+                teacher_id: context.userId,
+                course_id: courseId,
+              },
+              { onConflict: "teacher_id,course_id", ignoreDuplicates: true },
+            );
+
+            // If the course has no owner yet, claim it for backward compat.
+            if (!existingCourse.teacher_id) {
+              await supabaseAdmin
+                .from("courses")
+                .update({ teacher_id: context.userId, department_id: departmentId })
+                .eq("id", courseId);
+            }
           }
         } else {
-          const { data: newCourse } = await supabaseAdmin
+          // Create a new course row (no duplicates exist for this code).
+          const createPayload: {
+            code: string;
+            name: string;
+            teacher_id: string | null;
+            department_id: string | null;
+          } = {
+            code,
+            name,
+            teacher_id: data.role === "teacher" ? context.userId : null,
+            department_id: departmentId,
+          };
+          const { data: newCourse } = await (supabaseAdmin as any)
             .from("courses")
-            .insert({
-              code,
-              name,
-              teacher_id: context.userId,
-              department_id: departmentId,
-            })
+            .insert(createPayload)
             .select("id")
             .single();
 
           courseId = newCourse?.id ?? null;
+
+          // Record the teacher assignment in the canonical join table.
+          if (data.role === "teacher" && courseId) {
+            await (supabaseAdmin as any).from("teacher_courses").upsert(
+              {
+                teacher_id: context.userId,
+                course_id: courseId,
+              },
+              { onConflict: "teacher_id,course_id", ignoreDuplicates: true },
+            );
+          }
         }
 
         // If Student: Enroll student into this course in enrollments table
@@ -360,10 +413,12 @@ export const getMyRoles = createServerFn({ method: "POST" })
         const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(context.userId);
         const metaRole = authUser?.user?.user_metadata?.role;
         const targetRole = metaRole === "teacher" || metaRole === "student" ? metaRole : "student";
-        await supabaseAdmin.from("user_roles").upsert(
-          { user_id: context.userId, role: targetRole },
-          { onConflict: "user_id,role", ignoreDuplicates: true },
-        );
+        await supabaseAdmin
+          .from("user_roles")
+          .upsert(
+            { user_id: context.userId, role: targetRole },
+            { onConflict: "user_id,role", ignoreDuplicates: true },
+          );
         roles.push(targetRole);
       } catch (err) {
         console.warn("[getMyRoles] Could not auto-sync metadata role:", err);
@@ -535,7 +590,12 @@ export const actionReview = createServerFn({ method: "POST" })
 export const withdrawBiometric = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ targetStudentId: z.string().uuid().optional(), reason: z.string().max(500).optional() }).parse(input),
+    z
+      .object({
+        targetStudentId: z.string().uuid().optional(),
+        reason: z.string().max(500).optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     const isAdminCaller = await checkIsAdmin(context.userId, context.email);
@@ -725,7 +785,10 @@ async function ensureDefaultDepartmentsAndPrograms() {
 
     const defaultDepts = [
       { code: "SASET", name: "School of Advanced Sciences, Engineering and Technology" },
-      { code: "SITAICS", name: "School of Information Technology, Artificial Intelligence and Cyber Security" },
+      {
+        code: "SITAICS",
+        name: "School of Information Technology, Artificial Intelligence and Cyber Security",
+      },
       { code: "SISDSS", name: "School of Internal Security, Defence and Strategic Studies" },
       { code: "SISSP", name: "School of Internal Security and Strategic Policy" },
       { code: "SPES", name: "School of Physical Education and Sports" },
@@ -741,9 +804,7 @@ async function ensureDefaultDepartmentsAndPrograms() {
     }
 
     // Now get all department IDs
-    const { data: depts } = await supabaseAdmin
-      .from("departments")
-      .select("id, code");
+    const { data: depts } = await supabaseAdmin.from("departments").select("id, code");
 
     if (depts && depts.length > 0) {
       const defaultPrograms = [
@@ -1566,7 +1627,10 @@ export const reviewLeaveRequest = createServerFn({ method: "POST" })
       .eq("id", data.requestId);
 
     if (updateErr) {
-      console.warn("[reviewLeaveRequest] Primary update error, retrying with supabaseAdmin:", updateErr.message);
+      console.warn(
+        "[reviewLeaveRequest] Primary update error, retrying with supabaseAdmin:",
+        updateErr.message,
+      );
       const retry = await supabaseAdmin
         .from("leave_requests")
         .update({
@@ -1724,7 +1788,9 @@ export const runBiometricRetentionSweep = createServerFn({ method: "POST" })
 // reasoning and why it deliberately never auto-deletes face_embeddings by age alone.
 export const reportStaleFaceEmbeddings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ retentionDays: z.number().int().min(1).max(3650).optional() }).parse(input ?? {}))
+  .inputValidator((input: unknown) =>
+    z.object({ retentionDays: z.number().int().min(1).max(3650).optional() }).parse(input ?? {}),
+  )
   .handler(async ({ data, context }) => {
     await requireAdmin(context.userId);
     const { reportStaleEmbeddings } = await import("./biometric-retention-policy.server");
@@ -1752,6 +1818,29 @@ export const listTimetable = createServerFn({ method: "GET" })
     z.object({ courseId: z.string().uuid().optional() }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
+    // ACCOUNT-ISOLATION FIX: verify the caller owns the course before listing
+    // its timetable entries. Previously any authenticated user could read any
+    // teacher's timetable.
+    if (data.courseId) {
+      const { data: course } = await context.supabase
+        .from("courses")
+        .select("id, teacher_id")
+        .eq("id", data.courseId)
+        .maybeSingle();
+      if (!course) return [];
+      const isOwner = course.teacher_id === context.userId;
+      if (!isOwner) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: adminRow } = await supabaseAdmin
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", context.userId)
+          .eq("role", "admin")
+          .maybeSingle();
+        if (!adminRow) return [];
+      }
+    }
+
     let q = context.supabase
       .from("timetable")
       .select(
@@ -1778,6 +1867,26 @@ export const addTimetableEntry = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    // ACCOUNT-ISOLATION FIX: verify the caller owns this course before adding
+    // a timetable entry for it.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: course } = await context.supabase
+      .from("courses")
+      .select("id, teacher_id")
+      .eq("id", data.courseId)
+      .maybeSingle();
+    if (!course) throw new Error("Course not found");
+    const isOwner = course.teacher_id === context.userId;
+    if (!isOwner) {
+      const { data: adminRow } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", context.userId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!adminRow) throw new Error("403 Forbidden: You are not assigned to this subject.");
+    }
+
     const { data: row, error } = await context.supabase
       .from("timetable")
       .insert({
@@ -1791,15 +1900,6 @@ export const addTimetableEntry = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
     return row;
-  });
-
-export const deleteTimetableEntry = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
-  .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("timetable").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
   });
 
 export const generateSessionsFromTimetable = createServerFn({ method: "POST" })
@@ -1817,6 +1917,26 @@ export const generateSessionsFromTimetable = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    // ACCOUNT-ISOLATION FIX: verify the caller owns this course before
+    // generating sessions from its timetable.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: course } = await context.supabase
+      .from("courses")
+      .select("id, teacher_id")
+      .eq("id", data.courseId)
+      .maybeSingle();
+    if (!course) throw new Error("Course not found");
+    const isOwner = course.teacher_id === context.userId;
+    if (!isOwner) {
+      const { data: adminRow } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", context.userId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!adminRow) throw new Error("403 Forbidden: You are not assigned to this subject.");
+    }
+
     const { data: entries, error: ttErr } = await context.supabase
       .from("timetable")
       .select("*")
@@ -1854,6 +1974,41 @@ export const generateSessionsFromTimetable = createServerFn({ method: "POST" })
     const { error: insErr } = await context.supabase.from("class_sessions").insert(newSessions);
     if (insErr) throw new Error(insErr.message);
     return { createdCount: newSessions.length };
+  });
+
+export const deleteTimetableEntry = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    // ACCOUNT-ISOLATION FIX: verify the caller owns the course before deleting
+    // its timetable entry.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: timetableRow } = await context.supabase
+      .from("timetable")
+      .select("id, course_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!timetableRow) throw new Error("Timetable entry not found");
+    const { data: course } = await context.supabase
+      .from("courses")
+      .select("id, teacher_id")
+      .eq("id", timetableRow.course_id)
+      .maybeSingle();
+    if (!course) throw new Error("Course not found");
+    const isOwner = course.teacher_id === context.userId;
+    if (!isOwner) {
+      const { data: adminRow } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", context.userId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!adminRow) throw new Error("403 Forbidden: You are not assigned to this subject.");
+    }
+
+    const { error } = await context.supabase.from("timetable").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 // ============= Accreditation & Roster Export (P2.10) =============
@@ -2290,12 +2445,14 @@ export const triggerTestSecurityWebhook = createServerFn({ method: "POST" })
       return {
         ok: false,
         webhookConfigured: false,
-        message: "ALERT_WEBHOOK_URL environment variable is not set. Configure it in .env to receive live Discord/Slack push alerts.",
+        message:
+          "ALERT_WEBHOOK_URL environment variable is not set. Configure it in .env to receive live Discord/Slack push alerts.",
       };
     }
     await sendSecurityAlert({
       kind: "multi_student_flag",
-      summary: "🚨 DEMO SECURITY ALERT: Multi-student device sharing detected (3 distinct students on 1 device)",
+      summary:
+        "🚨 DEMO SECURITY ALERT: Multi-student device sharing detected (3 distinct students on 1 device)",
       details: {
         deviceFpHash: "demo-redteam-shared-device-888",
         distinctStudents: 3,
@@ -2346,7 +2503,11 @@ export const simulateRedTeamAttack = createServerFn({ method: "POST" })
         reasonCode = "liveness_static_photo_detected";
         eventType = "liveness_fail";
         gateReasons = {
-          liveness: { ok: false, reason: "static_photo_detected", signals: { xVar: 0.001, yVar: 0.001, areaVar: 0.005 } },
+          liveness: {
+            ok: false,
+            reason: "static_photo_detected",
+            signals: { xVar: 0.001, yVar: 0.001, areaVar: 0.005 },
+          },
           temporal: { ok: true },
           spatial: { ok: true },
         };
@@ -2356,7 +2517,11 @@ export const simulateRedTeamAttack = createServerFn({ method: "POST" })
         reasonCode = "frame_embeddings_missing";
         eventType = "liveness_fail";
         gateReasons = {
-          liveness: { ok: false, reason: "frame_embeddings_missing", note: "signals_without_frame_embeddings" },
+          liveness: {
+            ok: false,
+            reason: "frame_embeddings_missing",
+            note: "signals_without_frame_embeddings",
+          },
           temporal: { ok: true },
         };
         break;
@@ -2376,7 +2541,11 @@ export const simulateRedTeamAttack = createServerFn({ method: "POST" })
         reasonCode = "device_attestation_missing";
         eventType = "device_attestation_fail";
         gateReasons = {
-          deviceAttestation: { ok: false, reason: "device_required_no_exemption", policy: "mandatory" },
+          deviceAttestation: {
+            ok: false,
+            reason: "device_required_no_exemption",
+            policy: "mandatory",
+          },
         };
         break;
 
@@ -2619,13 +2788,16 @@ export const bulkCorrectAttendance = createServerFn({ method: "POST" })
     z
       .object({
         sessionId: z.string().uuid(),
-        corrections: z.array(
-          z.object({
-            studentId: z.string().uuid(),
-            status: z.enum(["present", "absent", "excused", "late"]),
-            reason: z.string().trim().min(2),
-          }),
-        ).min(1).max(200),
+        corrections: z
+          .array(
+            z.object({
+              studentId: z.string().uuid(),
+              status: z.enum(["present", "absent", "excused", "late"]),
+              reason: z.string().trim().min(2),
+            }),
+          )
+          .min(1)
+          .max(200),
       })
       .parse(input),
   )
@@ -2638,17 +2810,20 @@ export const bulkCorrectAttendance = createServerFn({ method: "POST" })
 
     for (const corr of data.corrections) {
       try {
-        const { error } = await (supabaseAdmin as any).from("attendance_records").upsert({
-          session_id: data.sessionId,
-          student_id: corr.studentId,
-          status: corr.status,
-          updated_at: new Date().toISOString(),
-          metadata: {
-            correction_reason: corr.reason,
-            corrected_by: context.userId,
-            corrected_at: new Date().toISOString(),
+        const { error } = await (supabaseAdmin as any).from("attendance_records").upsert(
+          {
+            session_id: data.sessionId,
+            student_id: corr.studentId,
+            status: corr.status,
+            updated_at: new Date().toISOString(),
+            metadata: {
+              correction_reason: corr.reason,
+              corrected_by: context.userId,
+              corrected_at: new Date().toISOString(),
+            },
           },
-        }, { onConflict: "session_id,student_id" });
+          { onConflict: "session_id,student_id" },
+        );
 
         if (error) {
           errors.push({ studentId: corr.studentId, message: error.message });

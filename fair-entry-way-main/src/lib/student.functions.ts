@@ -1,7 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { writeAuditLog, getValidAuthUserId, SYSTEM_ACTOR_ID, getActorAuthenticatedClient } from "./admin.functions";
+import {
+  writeAuditLog,
+  getValidAuthUserId,
+  SYSTEM_ACTOR_ID,
+  getActorAuthenticatedClient,
+} from "./admin.functions";
 
 const MIN_REQUIRED = 0.75;
 
@@ -60,10 +65,24 @@ function classify(pct: number): "safe" | "warning" | "shortage" {
   return "shortage";
 }
 
+export async function requireStudent(userId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "student")
+    .maybeSingle();
+  if (!data) {
+    throw new Error("403 Forbidden: Student role required");
+  }
+}
+
 export const getStudentDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<StudentDashboard> => {
     const { supabase, userId } = context;
+    await requireStudent(userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     try {
@@ -79,22 +98,54 @@ export const getStudentDashboard = createServerFn({ method: "GET" })
         .map((r: any) => r.courses)
         .filter((c: any): c is NonNullable<typeof c> => !!c);
 
-      // World-class ERP fallback: if student is not yet explicitly enrolled in courses, auto-link to available system courses
-      if (!courses.length) {
+      // Auto-enroll in any courses belonging to the student's department that they aren't already enrolled in
+      const { data: profile } = await (supabaseAdmin as any)
+        .from("profiles")
+        .select("department_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (profile?.department_id) {
+        const { data: deptCourses } = await (supabaseAdmin as any)
+          .from("courses")
+          .select("id, code, name, teacher_id, semester_id, semesters:semester_id(code)")
+          .eq("department_id", profile.department_id);
+
+        if (deptCourses && deptCourses.length > 0) {
+          const existingCourseIds = new Set(courses.map((c: any) => c.id));
+          const missingCourses = deptCourses.filter((c: any) => !existingCourseIds.has(c.id));
+
+          if (missingCourses.length > 0) {
+            courses = [...courses, ...missingCourses];
+            const autoEnrollPayload = missingCourses.map((c: any) => ({
+              student_id: userId,
+              course_id: c.id,
+              semester_id: c.semester_id,
+            }));
+            await (supabaseAdmin as any)
+              .from("enrollments")
+              .insert(autoEnrollPayload)
+              .catch(() => {});
+          }
+        }
+      } else if (!courses.length) {
+        // Fallback for students without a department
         const { data: allCourses } = await (supabaseAdmin as any)
           .from("courses")
           .select("id, code, name, teacher_id, semester_id, semesters:semester_id(code)")
-          .limit(20);
+          .limit(10);
 
         if (allCourses && allCourses.length > 0) {
           courses = allCourses;
-          // Auto-enroll student so the teacher-student relationship is stored
-          const autoEnrollPayload = allCourses.slice(0, 10).map((c: any) => ({
+          const autoEnrollPayload = allCourses.map((c: any) => ({
             student_id: userId,
             course_id: c.id,
             semester_id: c.semester_id,
           }));
-          await (supabaseAdmin as any).from("enrollments").insert(autoEnrollPayload).catch(() => {});
+          await (supabaseAdmin as any)
+            .from("enrollments")
+            .insert(autoEnrollPayload)
+            .catch(() => {});
         }
       }
 
@@ -271,7 +322,7 @@ export const getStudentDashboard = createServerFn({ method: "GET" })
         .slice(0, 15)
         .map((s) => {
           const c: any = courseById.get(s.course_id);
-          const teacherName = c?.teacher_id ? teacherMap.get(c.teacher_id) ?? null : null;
+          const teacherName = c?.teacher_id ? (teacherMap.get(c.teacher_id) ?? null) : null;
           return {
             sessionId: s.id,
             courseId: s.course_id,
@@ -284,7 +335,6 @@ export const getStudentDashboard = createServerFn({ method: "GET" })
             alreadyMarked: markedSessionIds.has(s.id),
           };
         });
-
 
       return {
         overall: {
@@ -336,9 +386,7 @@ export const listAvailableTeachers = createServerFn({ method: "GET" })
       if (c.teacher_id) teacherIds.add(c.teacher_id);
     });
 
-    let query = supabaseAdmin
-      .from("profiles")
-      .select("user_id, display_name");
+    let query = supabaseAdmin.from("profiles").select("user_id, display_name");
 
     if (teacherIds.size > 0) {
       query = query.in("user_id", Array.from(teacherIds));
@@ -401,8 +449,13 @@ export const submitLeaveRequest = createServerFn({ method: "POST" })
     };
 
     // Step 1: Direct HTTP fetch insert via PostgREST REST API (100% immune to JS client schema wrappers)
-    const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://omewkcnzhgptspgljrnc.supabase.co";
-    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tZXdrY256aGdwdHNwZ2xqcm5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTgzMzM0MywiZXhwIjoyMTAxNDA5MzQzfQ.jyYlQi2afwr3SLEAKor1uCp-dj2M2mV52lGZSVohjzQ";
+    const SUPABASE_URL =
+      process.env.SUPABASE_URL ||
+      process.env.VITE_SUPABASE_URL ||
+      "https://omewkcnzhgptspgljrnc.supabase.co";
+    const SUPABASE_SERVICE_ROLE_KEY =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tZXdrY256aGdwdHNwZ2xqcm5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTgzMzM0MywiZXhwIjoyMTAxNDA5MzQzfQ.jyYlQi2afwr3SLEAKor1uCp-dj2M2mV52lGZSVohjzQ";
 
     const res = await fetch(`${SUPABASE_URL}/rest/v1/leave_requests`, {
       method: "POST",
@@ -488,7 +541,9 @@ export const reviewTeacherAssignedLeaveRequest = createServerFn({ method: "POST"
 
     // STRICT AUTHORITY ENFORCEMENT: Only the explicitly assigned teacher has authority to approve/reject
     if (req.assigned_teacher_id && req.assigned_teacher_id !== context.userId) {
-      throw new Error("Forbidden: Only the selected assigned teacher has authority to approve or reject this request.");
+      throw new Error(
+        "Forbidden: Only the selected assigned teacher has authority to approve or reject this request.",
+      );
     }
 
     const safeApproverId = await getValidAuthUserId(supabaseAdmin, context.userId);
@@ -505,7 +560,10 @@ export const reviewTeacherAssignedLeaveRequest = createServerFn({ method: "POST"
       .eq("id", data.requestId);
 
     if (updateErr) {
-      console.warn("[reviewTeacherAssignedLeaveRequest] Primary update error, retrying with supabaseAdmin:", updateErr.message);
+      console.warn(
+        "[reviewTeacherAssignedLeaveRequest] Primary update error, retrying with supabaseAdmin:",
+        updateErr.message,
+      );
       const retry = await (supabaseAdmin as any)
         .from("leave_requests")
         .update({

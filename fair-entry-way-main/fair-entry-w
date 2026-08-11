@@ -1,0 +1,52 @@
+# Face Match Benchmark
+
+This directory contains a small, honest, re-runnable benchmark for the face-match pipeline
+used in production (`face-api.js` FaceRecognitionNet descriptor extraction + cosine similarity
+from `attendance-crypto.server.ts`).
+
+## Dataset structure
+
+Populate `benchmarks/dataset/` with real captured data (NOT synthetic):
+
+```
+benchmarks/dataset/
+  subject_01/
+    reference.jpg          # enrollment reference image (well-lit, frontal)
+    normal_light.jpg       # probe: normal classroom lighting
+    dim_light.jpg          # probe: dim lighting
+    side_light.jpg         # probe: side lighting
+    with_glasses.jpg       # probe: wearing glasses
+  subject_02/
+    reference.jpg
+    ...
+```
+
+Each subject folder must contain exactly one file with `reference` in its name. All other
+image files in the folder are treated as probes. The condition label is the filename without
+the extension (e.g. `dim_light.jpg` → condition `dim_light`).
+
+## Running
+
+```bash
+node scripts/benchmark-face-match.mjs
+```
+
+Optional args:
+
+```bash
+node scripts/benchmark-face-match.mjs --dataset benchmarks/dataset --out benchmarks
+```
+
+## Outputs
+
+- `benchmarks/results.csv` — per-probe: subject, condition, similarity, decision
+- `benchmarks/results.json` — same data as JSON + summary stats
+- stdout summary — overall match rate, false-reject estimate, per-condition breakdown
+
+## Honest scope
+
+This is a small pilot benchmark. It does NOT claim demographic breakdowns unless the dataset
+actually includes that variation. It reports only what the collected data supports. The
+thresholds used (`THRESHOLD_MATCH = 0.82`, `THRESHOLD_REVIEW = 0.75`) are the same as in
+`src/lib/attendance.functions.ts` — this benchmark directly informs whether those thresholds
+are appropriate for this system's actual camera/lighting/population conditions.

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presence ERP - Face Attendance System</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-group">
+      <div class="logo-icon">👁</div>
+      <div class="logo-title">Presence ERP <span style="font-weight:400; color:var(--text-muted);">| Face Engine</span></div>
+    </div>
+    <div id="healthBadge" class="health-badge">
+      <span class="health-dot"></span>
+      <span id="healthText">System Healthy</span>
+    </div>
+  </header>
+
+  <!-- Container -->
+  <div class="container">
+    
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('live')">📹 Live Monitor</button>
+      <button class="tab-btn" onclick="switchTab('enrollment')">👤 Employee Enrollment</button>
+      <button class="tab-btn" onclick="switchTab('employees')">📋 Employee Directory</button>
+      <button class="tab-btn" onclick="switchTab('attendance')">📊 Daily Attendance</button>
+    </div>
+
+    <!-- Tab 1: Live Monitor -->
+    <div id="tab-live" class="tab-panel active">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">
+            <span>Camera Stream</span>
+            <span id="fpsCounter" style="font-size:0.85rem; color:var(--text-muted);">0.0 FPS</span>
+          </div>
+          <div class="video-wrapper">
+            <video id="liveVideo" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas"></canvas>
+          </div>
+          <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+            <button id="startCamBtn" class="btn" onclick="toggleWebcam()">Start Webcam</button>
+            <input type="text" id="cameraIdInput" value="CAM_LOBBY" style="max-width: 160px;" placeholder="Camera ID">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Live Recognition Stream</div>
+          <div style="max-height: 420px; overflow-y: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Employee</th>
+                  <th>Score</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="recognitionLogBody">
+                <tr><td colspan="4" style="color:var(--text-muted); text-align:center;">Start webcam to begin recognition stream...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Employee Enrollment -->
+    <div id="tab-enrollment" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Enroll New Employee</div>
+          <form id="enrollForm" onsubmit="handleEnrollment(event)">
+            <div class="form-group">
+              <label for="empId">Employee ID *</label>
+              <input type="text" id="empId" required placeholder="e.g. EMP001">
+            </div>
+            <div class="form-group">
+              <label for="empName">Full Name *</label>
+              <input type="text" id="empName" required placeholder="e.g. Jane Smith">
+            </div>
+            <div class="form-group">
+              <label for="empDept">Department</label>
+              <input type="text" id="empDept" placeholder="e.g. Engineering">
+            </div>
+
+            <div style="margin-top: 1rem;">
+              <label>Face Samples Captured: <span id="sampleCount">0</span>/5</label>
+              <div class="capture-gallery" id="captureGallery"></div>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">
+              <button type="button" class="btn btn-secondary" onclick="captureSample()">📸 Capture Sample</button>
+              <button type="submit" class="btn" id="submitEnrollBtn" disabled>Submit Enrollment</button>
+            </div>
+          </form>
+          <div id="enrollStatus" style="margin-top: 1rem; font-size: 0.9rem;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Capture Feed</div>
+          <div class="video-wrapper">
+            <video id="enrollVideo" autoplay playsinline muted></video>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Employee Directory -->
+    <div id="tab-employees" class="tab-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>Active Employees</span>
+          <button class="btn btn-secondary" onclick="loadEmployees()">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Department</th>
+              <th>Enrolled At</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="employeeTableBody">
+            <tr><td colspan="6" style="text-align:center;">Loading directory...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab 4: Daily Attendance Report -->
+    <div id="tab-attendance" class="tab-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>Daily Attendance Summary</span>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="date" id="reportDatePicker" style="padding:0.4rem; background:rgba(15,23,42,0.8); border:1px solid var(--border-color); color:#fff; border-radius:6px;">
+            <button class="btn btn-secondary" onclick="loadDailyReport()">Load Report</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Employee ID</th>
+              <th>Name</th>
+              <th>First Check-In</th>
+              <th>Last Check-Out</th>
+              <th>Total Events</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceReportBody">
+            <tr><td colspan="5" style="text-align:center;">Select date and click Load Report...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
