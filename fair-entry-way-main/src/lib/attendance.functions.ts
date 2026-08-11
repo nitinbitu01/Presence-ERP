@@ -2692,6 +2692,11 @@ export const respondToSpotCheck = createServerFn({ method: "POST" })
       return { verified: false, reason: "spot_check_failed" };
     }
 
+      await supabaseAdmin.from("spot_check_requests").update({ status: "passed" }).eq("id", req.id);
+
+    return { verified: true };
+  });
+
 /**
  * Forward enrollment image to Python FastAPI YuNet (Detector) + SFace (Recognizer) service.
  * Endpoint: POST http://localhost:8000/employees/enroll
@@ -2775,8 +2780,3 @@ export async function verifyWithPythonFaceEngine(
     return null;
   }
 }
-
-    await supabaseAdmin.from("spot_check_requests").update({ status: "passed" }).eq("id", req.id);
-
-    return { verified: true };
-  });
