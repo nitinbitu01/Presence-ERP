@@ -1,0 +1,21 @@
+{
+  "app_name": "Presence ERP",
+  "welcome": "Welcome to Presence ERP",
+  "class_checkin": "Class Check-in",
+  "my_attendance": "My Attendance",
+  "leave_request": "Leave Request",
+  "exams": "Exams & Backlogs",
+  "fees": "Fee Invoices & Payments",
+  "submit": "Submit",
+  "cancel": "Cancel",
+  "safe": "Safe",
+  "warning": "Warning",
+  "shortage": "Shortage",
+  "present": "Present",
+  "absent": "Absent",
+  "late": "Late",
+  "review": "Pending Review",
+  "simple_mode": "Simple Mode",
+  "high_contrast": "High Contrast",
+  "report_accessibility": "Report Accessibility Issue"
+}
