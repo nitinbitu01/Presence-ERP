@@ -19,6 +19,8 @@ export interface SystemStatusOverview {
 export async function fetchSystemStatus(): Promise<SystemStatusOverview> {
   const now = new Date().toISOString();
   const subsystems: SubsystemHealth[] = [
+    { name: "OpenCV YuNet Face Detector (ONNX)", status: "operational", latencyMs: 5, lastChecked: now },
+    { name: "OpenCV SFace 128D Recognizer (ONNX)", status: "operational", latencyMs: 58, lastChecked: now },
     { name: "Database & Ledger", status: "operational", latencyMs: 14, lastChecked: now },
     { name: "Auth & SSO Engine", status: "operational", latencyMs: 22, lastChecked: now },
     { name: "Biometric Liveness SDK", status: "operational", latencyMs: 38, lastChecked: now },
