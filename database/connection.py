@@ -25,17 +25,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 log = structlog.get_logger()
 
-# ── Build DSN from environment variables ──────────────────────────────────────
 def _build_dsn() -> str:
-    # Render / Railway / Heroku provide a single DATABASE_URL — prefer it.
     database_url = os.environ.get("DATABASE_URL", "")
     if database_url:
-        # Render uses postgres:// scheme; SQLAlchemy requires postgresql+psycopg2://
+        if database_url.startswith("sqlite"):
+            return database_url
         dsn = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
         dsn = dsn.replace("postgresql://", "postgresql+psycopg2://", 1)
         return dsn
-    # Fallback: individual vars for local development
-    host = os.environ.get("DB_HOST", "localhost")
+    host = os.environ.get("DB_HOST", "")
+    if not host or host == "localhost":
+        # Fallback to SQLite file if no Postgres host provided
+        return "sqlite:///./attendance_erp.db"
     port = os.environ.get("DB_PORT", "5432")
     name = os.environ.get("DB_NAME", "attendance_erp")
     user = os.environ.get("DB_USER", "attendance_user")
@@ -44,17 +45,24 @@ def _build_dsn() -> str:
 
 
 def create_db_engine(dsn: str | None = None):
-    """Create SQLAlchemy engine. dsn overrides env-based DSN (used in tests)."""
+    """Create SQLAlchemy engine. dsn overrides env-based DSN."""
     dsn = dsn or _build_dsn()
-    engine = create_engine(
-        dsn,
-        pool_size=5,
-        max_overflow=10,
-        pool_timeout=30,
-        pool_pre_ping=True,
-        echo=False,
-    )
-    log.info("db_engine_created", host=os.environ.get("DB_HOST", "localhost"))
+    if dsn.startswith("sqlite"):
+        engine = create_engine(
+            dsn,
+            connect_args={"check_same_thread": False},
+            echo=False,
+        )
+    else:
+        engine = create_engine(
+            dsn,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_pre_ping=True,
+            echo=False,
+        )
+    log.info("db_engine_created", dsn_type="sqlite" if dsn.startswith("sqlite") else "postgres")
     return engine
 
 
