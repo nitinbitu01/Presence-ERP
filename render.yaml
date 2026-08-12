@@ -1,0 +1,46 @@
+# render.yaml — Render Blueprint
+# Deploys the YuNet + SFace Face Attendance Python API + a managed PostgreSQL DB.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: attendance-face-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile   # path relative to this render.yaml
+    dockerContext: .               # build context = attendance_face/ root
+    plan: free                     # free tier (512 MB RAM, shared CPU)
+
+    # Render auto-injects PORT; our Dockerfile CMD uses ${PORT:-8000}
+    healthCheckPath: /health
+
+    envVars:
+      # ── Database (linked to the DB below) ──────────────────────────────────
+      - key: DATABASE_URL
+        fromDatabase:
+          name: attendance-face-db
+          property: connectionString
+
+      # ── Model storage paths ─────────────────────────────────────────────────
+      - key: MODELS_BASE_PATH
+        value: models/
+      - key: SNAPSHOTS_PATH
+        value: snapshots/
+
+      # ── Logging ─────────────────────────────────────────────────────────────
+      - key: LOG_LEVEL
+        value: INFO
+
+      # ── Security ─────────────────────────────────────────────────────────────
+      - key: LIVENESS_ENABLED
+        value: "false"
+
+      # ── API secret (generate a random 32-char string) ────────────────────────
+      - key: API_SECRET_KEY
+        generateValue: true       # Render generates a random secret automatically
+
+# Managed PostgreSQL database (free tier: 1 GB storage, 97-day retention)
+databases:
+  - name: attendance-face-db
+    plan: free
+    databaseName: attendance_erp
+    user: attendance_user

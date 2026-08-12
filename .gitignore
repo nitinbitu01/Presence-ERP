@@ -1,0 +1,41 @@
+# .gitignore for attendance_face
+
+# ─── NEVER commit these ────────────────────────────────────────────────────
+.env
+*.env
+
+# ─── Model files (large binary — download via setup_models.py) ─────────────
+models/
+*.onnx
+
+# ─── Audit trail images ────────────────────────────────────────────────────
+snapshots/
+
+# ─── Log files ─────────────────────────────────────────────────────────────
+logs/
+
+# ─── Python cache ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ─── Testing / coverage ────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.coveragerc
+
+# ─── IDE ───────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

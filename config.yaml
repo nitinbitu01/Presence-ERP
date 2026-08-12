@@ -1,0 +1,84 @@
+# config.yaml
+# Algorithm tuning parameters only.
+# Secrets and paths -> .env file
+# All values overridable via environment variables with prefix FACE_
+
+models:
+  base_path: "${MODELS_BASE_PATH:models/}"
+  detector:
+    filename: "face_detection_yunet_2023mar.onnx"
+    sha256: ""  # Fill after running: python scripts/setup_models.py --print-checksums
+  recognizer:
+    filename: "face_recognition_sface_2021dec.onnx"
+    sha256: ""  # Fill after running: python scripts/setup_models.py --print-checksums
+
+detection:
+  confidence_threshold: 0.9
+  min_face_size_px: 80
+  input_size: [320, 320]
+  max_faces_per_frame: 10
+  # NOTE: setInputSize() is called per-frame in detector.py
+  # because input resolution may vary between frames.
+  # Forgetting this causes SILENT detection failures — no error, just empty results.
+
+recognition:
+  # ── COSINE SIMILARITY ───────────────────────────────────────────────────
+  # cv2.FaceRecognizerSF.FR_COSINE
+  # Range: -1.0 to 1.0  (face pairs typically 0.0 to 1.0)
+  # HIGHER score = MORE similar = same person
+  # ACCEPT if score >= cosine_threshold
+  # REJECT if score <  cosine_threshold  <-- direction matters
+  # 0.363 = SFace paper default on LFW dataset.
+  # Calibrate for YOUR cameras using scripts/calibrate_threshold.py
+  cosine_threshold: 0.363
+
+  # ── L2 DISTANCE ─────────────────────────────────────────────────────────
+  # cv2.FaceRecognizerSF.FR_NORM_L2
+  # Range: 0.0 to ~2.0
+  # LOWER score = MORE similar = same person
+  # ACCEPT if score <= l2_threshold
+  # REJECT if score >  l2_threshold  <-- OPPOSITE direction to cosine
+  l2_threshold: 1.128
+
+  metric: "cosine"  # "cosine" (preferred) or "l2"
+
+enrollment:
+  required_images: 5
+  min_accepted_images: 3
+  blur_threshold: 100.0    # Laplacian variance on face crop. Below = reject.
+  max_yaw_degrees: 30      # Face horizontal turn limit for enrollment
+  max_pitch_degrees: 20    # Face vertical tilt limit for enrollment
+
+attendance:
+  cooldown_minutes: 5
+  save_snapshot: true
+  snapshot_path: "${SNAPSHOTS_PATH:snapshots/}"
+  snapshot_format: "jpg"
+  snapshot_jpeg_quality: 85
+  valid_hour_start: 6      # Ignore detections before 6 AM
+  valid_hour_end: 22       # Ignore detections after 10 PM
+
+camera:
+  frame_skip: 4                      # Run inference every Nth frame
+  reconnect_max_attempts: 5
+  reconnect_backoff_seconds: 2
+  reconnect_backoff_multiplier: 2.0  # Exponential: 2s, 4s, 8s, 16s, 32s
+  frame_buffer_size: 2               # Small buffer prevents stale frames
+  read_timeout_seconds: 5.0
+
+engine:
+  thread_pool_size: 4  # Max concurrent inference threads
+  # Each thread gets its own detector + recognizer instance
+  # because OpenCV DNN is NOT thread-safe (no shared model state).
+
+logging:
+  level: "${LOG_LEVEL:INFO}"
+  format: "json"   # Always JSON in production
+  file: "${LOG_FILE:logs/attendance.log}"
+  max_bytes: 10485760   # 10 MB per log file
+  backup_count: 5       # Keep 5 rotated files
+
+security:
+  liveness_enabled: "${LIVENESS_ENABLED:false}"
+  # WARNING: false = photo/video spoofing is possible.
+  # Every recognition event logs a WARNING when false.

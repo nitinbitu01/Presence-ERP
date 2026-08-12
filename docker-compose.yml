@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: attendance_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-attendance_erp}
+      POSTGRES_USER: ${DB_USER:-attendance_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-attendance_pass_secure}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-attendance_user} -d ${DB_NAME:-attendance_erp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: attendance_api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-attendance_erp}
+      DB_USER: ${DB_USER:-attendance_user}
+      DB_PASSWORD: ${DB_PASSWORD:-attendance_pass_secure}
+      LOG_LEVEL: INFO
+      LIVENESS_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./snapshots:/app/snapshots
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
